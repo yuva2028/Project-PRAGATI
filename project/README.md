@@ -26,6 +26,19 @@ CHIRPS Rainfall ─────────────────────�
 | Frontend    | React + Leaflet + Chart.js|
 | Database    | PostgreSQL + PostGIS       |
 
+## ISRO India-Fleet Band Mapping Compatibility
+
+While the live GEE prototype is configured to ingest open-access Sentinel-1/2 and MODIS imagery for rapid global evaluation, the extraction and feature extraction pipelines are **sensor-agnostic** and directly align with ISRO's indigenous satellite payloads. This allows seamless deployment using national data archives from Bhuvan or Bhoonidhi:
+
+| Feature / Index | Ingested Band (GEE Sentinel) | Equivalent ISRO Payload Band | Payload Fleet |
+| :--- | :--- | :--- | :--- |
+| **NDVI / EVI** | B4 (Red, 665nm) & B8 (NIR, 842nm) | Band 2 (Red, 650nm) & Band 3 (NIR, 820nm) | **LISS-III / LISS-IV / AWiFS** |
+| **NDWI** | B8 (NIR) & B11 (SWIR, 1610nm) | Band 3 (NIR) & Band 4 (SWIR, 1620nm) | **LISS-III / AWiFS** |
+| **Speckle Filter** | Sentinel-1 C-band SAR | EOS-04 C-band SAR (FRS-1/MRS mode) | **EOS-04 (RISAT-1A)** |
+| **Texture (GLCM)** | VV / VH polarization | HH / HV / VV / VH polarization | **EOS-04 / RISAT-2B** |
+| **Dual-pol ratio** | VH/VV ratio | HV/HH or VH/VV ratio | **EOS-04 (Dual-pol mode)** |
+| **Future Sensors** | L-band / S-band SAR backscatter | L-band & S-band sweeps | **Upcoming NISAR SAR** |
+
 ## Quick Start
 
 ### 1. GEE Authentication (One time)

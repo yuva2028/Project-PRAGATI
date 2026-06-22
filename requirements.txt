@@ -4,6 +4,7 @@ pandas==2.2.2
 scikit-learn==1.5.0
 joblib==1.4.2
 torch>=2.0.0
+xgboost==2.0.3
 
 # Remote Sensing API
 earthengine-api==0.1.390

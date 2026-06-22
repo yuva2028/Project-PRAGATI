@@ -89,3 +89,20 @@ async def get_field_advisory(field: FieldInput):
         return {"status": "success", "advisory": advisory}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/advisory/command-summary")
+async def get_command_summary():
+    """Returns aggregated command-area canal distributary water release strategies."""
+    try:
+        from ml.advisory_engine import get_command_area_advisories
+        advisories = generate_bulk_advisories()  # generates 150 fields across states
+        command_summaries = get_command_area_advisories(advisories)
+        
+        return {
+            "status": "success",
+            "total_command_distributaries": len(command_summaries),
+            "command_areas": command_summaries
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

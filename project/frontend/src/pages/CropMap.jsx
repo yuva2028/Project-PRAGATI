@@ -16,22 +16,50 @@ export default function CropMap() {
   const [cropData,  setCropData]  = useState(null)
   const [tileUrl,   setTileUrl]   = useState(null)
   const [activeBand, setActiveBand] = useState('NDVI')
+  const [showStats, setShowStats] = useState(false)
   const [loading,   setLoading]   = useState(true)
   const [error,     setError]     = useState(null)
+
+  const [liveData,    setLiveData]    = useState(null)
+  const [liveMetrics, setLiveMetrics] = useState(null)
+  const [selectedModel, setSelectedModel] = useState('rf')
 
   useEffect(() => {
     Promise.all([
       axios.get(`${API}/api/crop-stats`),
       axios.get(`${API}/api/crop-tile?band=${activeBand}`),
+      axios.get(`${API}/api/crop-map`).catch(() => null),  // non-blocking
     ])
-    .then(([statsRes, tileRes]) => {
+    .then(([statsRes, tileRes, cropMapRes]) => {
       setCropData(statsRes.data)
       setTileUrl(tileRes.data.tile_url)
+      if (cropMapRes?.data) {
+        setLiveData(cropMapRes.data)
+        setLiveMetrics(cropMapRes.data.metrics || null)
+      }
       setLoading(false)
     })
     .catch(e => { setError(e.message); setLoading(false) })
   }, [activeBand])
 
+  const getDisplayCrops = () => {
+    if (liveData) {
+      const stats = selectedModel === 'xgb' ? liveData.area_statistics_xgb : liveData.area_statistics_rf;
+      if (stats) {
+        const totalPixels = Object.values(stats).reduce((sum, v) => sum + v.pixel_count, 0);
+        return Object.entries(stats).map(([name, val]) => ({
+          name,
+          area_ha: val.area_ha,
+          percentage: totalPixels > 0 ? parseFloat((val.pixel_count / totalPixels * 100).toFixed(1)) : 0,
+          color: val.color
+        }));
+      }
+    }
+    return cropData ? cropData.crops : [];
+  }
+
+  const currentMetrics = liveMetrics ? (selectedModel === 'xgb' ? liveMetrics.xgb : liveMetrics.rf) : null;
+  const displayCrops = getDisplayCrops();
   const bands = ['NDVI', 'NDWI', 'EVI']
 
   return (
@@ -49,7 +77,7 @@ export default function CropMap() {
         <>
           {/* KPIs */}
           <div className="kpi-grid">
-            {cropData.crops.map((c, i) => (
+            {displayCrops.map((c, i) => (
               <div key={c.name} className="kpi-card fade-in-up" style={{ '--accent-gradient': `linear-gradient(135deg, ${c.color}aa, ${c.color}55)`, animationDelay: `${i*0.07}s` }}>
                 <div className="kpi-label">{c.name}</div>
                 <div className="kpi-value" style={{ color: c.color }}>{c.area_ha.toLocaleString()}</div>
@@ -117,7 +145,7 @@ export default function CropMap() {
                 <div className="card-header"><span className="card-title">Crop Legend</span></div>
                 <div className="card-body">
                   <div className="legend">
-                    {cropData.crops.map(c => (
+                    {displayCrops.map(c => (
                       <div key={c.name} className="legend-item">
                         <div className="legend-dot" style={{ background: c.color }} />
                         <span style={{ flex:1, color:'var(--text-secondary)' }}>{c.name}</span>
@@ -137,14 +165,23 @@ export default function CropMap() {
               </div>
 
               <div className="card">
-                <div className="card-header"><span className="card-title">Model Info</span></div>
+                <div className="card-header" style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                  <span className="card-title">Model Comparison</span>
+                  <div style={{ display:'flex', gap:6 }}>
+                    <button className={`map-btn ${selectedModel === 'rf' ? 'active':''}`} onClick={() => setSelectedModel('rf')} style={{ padding:'2px 8px', fontSize:11 }}>Random Forest</button>
+                    <button className={`map-btn ${selectedModel === 'xgb' ? 'active':''}`} onClick={() => setSelectedModel('xgb')} style={{ padding:'2px 8px', fontSize:11 }}>XGBoost</button>
+                  </div>
+                </div>
                 <div className="card-body">
                   {[
-                    { label:'Model', value:'Random Forest' },
-                    { label:'Features', value:'NDVI, NDWI, EVI, VV, VH' },
-                    { label:'Data Source', value:'Sentinel-1 + Sentinel-2' },
-                    { label:'Processing', value:'Google Earth Engine' },
-                    { label:'Actual Accuracy', value: cropData.metrics ? `${cropData.metrics.accuracy}%` : '>85%' },
+                    { label:'Model Type',      value: selectedModel === 'xgb' ? 'XGBoost Classifier' : 'Random Forest (n=200)' },
+                    { label:'Features',        value:'NDVI, NDWI, EVI, VV, VH + GLCM' },
+                    { label:'Temporal Stack',  value:'T1 (Early) + T2 (Late Season)' },
+                    { label:'Data Source',     value:'Sentinel-1 + Sentinel-2' },
+                    { label:'Processing',      value:'Google Earth Engine' },
+                    { label:'CV Accuracy',     value: currentMetrics ? `${currentMetrics.accuracy}%` : '>85% (target)' },
+                    { label:'Cohen\'s Kappa',  value: currentMetrics?.kappa_coefficient != null ? currentMetrics.kappa_coefficient.toFixed(4) : '—' },
+                    { label:'F1 Score',        value: currentMetrics ? `${currentMetrics.f1_score}%` : '—' },
                   ].map(r => (
                     <div key={r.label} style={{ display:'flex', justifyContent:'space-between', padding:'8px 0', borderBottom:'1px solid var(--border)' }}>
                       <span style={{ color:'var(--text-muted)', fontSize:12 }}>{r.label}</span>
@@ -152,11 +189,11 @@ export default function CropMap() {
                     </div>
                   ))}
 
-                  {cropData.metrics?.feature_importances && (
+                  {(currentMetrics?.feature_importances) && (
                     <div style={{ marginTop: 20 }}>
                       <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 12 }}>XAI: FEATURE IMPORTANCE (TOP 5)</div>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                        {Object.entries(cropData.metrics.feature_importances).slice(0, 5).map(([feat, imp]) => (
+                        {Object.entries(currentMetrics.feature_importances).slice(0, 5).map(([feat, imp]) => (
                           <div key={feat} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                             <div style={{ width: 80, fontSize: 11, color: 'var(--text-secondary)' }}>{feat}</div>
                             <div style={{ flex: 1, height: 6, background: 'var(--bg-lighter)', borderRadius: 3, overflow: 'hidden' }}>

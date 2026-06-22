@@ -198,6 +198,90 @@ def get_summary_stats(advisories: list) -> dict:
     }
 
 
+def get_command_area_advisories(advisories: list) -> list:
+    """
+    Groups individual field advisories into regional canal command distributaries,
+    aggregating water deficits to advise canal gate operations (discharge flow status).
+    """
+    # Mapping field prefix to regional canal distributary names
+    distributary_map = {
+        "PUN": "Sutlej-Beas Canal Distributary (D-1)",
+        "UP":  "Sharda Canal Distributary (D-2)",
+        "MP":  "Narmada Canal MP Distributary (D-3)",
+        "MAH": "Godavari Canal MH Distributary (D-4)",
+        "KAR": "Krishna Canal KA Distributary (D-5)",
+        "TAM": "Cauvery Canal TN Distributary (D-6)",
+        "WES": "Teesta Canal WB Distributary (D-7)",
+        "GUJ": "Sardar Sarovar Canal GJ Distributary (D-8)",
+        "AND": "Nagarjuna Sagar Canal AP Distributary (D-9)",
+        "RAJ": "Indira Gandhi Canal RJ Distributary (D-10)",
+        "BIH": "Kosi Canal BH Distributary (D-11)",
+    }
+
+    groups = {}
+    for a in advisories:
+        # Extract prefix from field_id, e.g. "IND-PUN-1001" -> "PUN"
+        parts = a["field_id"].split("-")
+        prefix = parts[1] if len(parts) > 1 else "OTH"
+        dist_name = distributary_map.get(prefix, "General Command Distributary (D-12)")
+        
+        if dist_name not in groups:
+            groups[dist_name] = []
+        groups[dist_name].append(a)
+
+    summary_list = []
+    for dist_name, field_list in groups.items():
+        total_fields = len(field_list)
+        critical_count = sum(1 for f in field_list if f["priority"] == "CRITICAL")
+        high_count = sum(1 for f in field_list if f["priority"] == "HIGH")
+        moderate_count = sum(1 for f in field_list if f["priority"] == "MEDIUM")
+        
+        total_etc = sum(f["crop_water_requirement_mm"] for f in field_list)
+        total_precip = sum(f["rainfall_mm"] for f in field_list)
+        total_deficit = sum(f["water_deficit_mm"] for f in field_list)
+        total_water_needed = sum(f["water_to_apply_mm"] for f in field_list)
+        
+        avg_vci = sum(f["vci"] for f in field_list) / total_fields if total_fields > 0 else 50.0
+        
+        # Decide canal gate discharge strategy
+        if total_deficit > (total_etc * 0.6) and (critical_count + high_count) > (total_fields * 0.4):
+            gate_discharge = "MAXIMUM DISCHARGE"
+            gate_color = "#dc2626"
+            action_desc = "Open canal gates to maximum flow immediately. Deliver full capacity."
+        elif total_deficit > (total_etc * 0.3) or (critical_count + high_count) > (total_fields * 0.2):
+            gate_discharge = "MODERATE DISCHARGE"
+            gate_color = "#f97316"
+            action_desc = "Open gates to 50% flow. Monitor tail-end water distribution."
+        elif total_deficit > 0:
+            gate_discharge = "MINIMUM FLOW"
+            gate_color = "#eab308"
+            action_desc = "Maintain low discharge flow for critical field zones."
+        else:
+            gate_discharge = "CLOSED (SURPLUS)"
+            gate_color = "#22c55e"
+            action_desc = "Close canal gates. Sizable rainfall surplus or healthy soil moisture."
+
+        summary_list.append({
+            "command_area": dist_name,
+            "total_fields_monitored": total_fields,
+            "critical_fields": critical_count,
+            "high_stress_fields": high_count,
+            "moderate_stress_fields": moderate_count,
+            "average_vci": round(avg_vci, 1),
+            "total_crop_demand_mm": round(total_etc, 1),
+            "total_rainfall_mm": round(total_precip, 1),
+            "total_deficit_mm": round(total_deficit, 1),
+            "discharge_recommendation": gate_discharge,
+            "gate_action": action_desc,
+            "color": gate_color,
+            "water_deficit_ratio": round(total_water_needed / max(1, total_etc) * 100, 1)
+        })
+
+    # Sort so that highest water deficits / gate discharge levels are first
+    PRIO = {"MAXIMUM DISCHARGE": 0, "MODERATE DISCHARGE": 1, "MINIMUM FLOW": 2, "CLOSED (SURPLUS)": 3}
+    return sorted(summary_list, key=lambda x: PRIO.get(x["discharge_recommendation"], 4))
+
+
 if __name__ == '__main__':
     # Demo: generate advisories for sample fields
     sample_fields = [
@@ -210,3 +294,8 @@ if __name__ == '__main__':
     advisories = generate_bulk_advisories(sample_fields)
     for a in advisories:
         print(f"[{a['priority']}] {a['recommendation']} | Water: {a['water_to_apply_mm']}mm")
+        
+    print("\n--- Command Area Aggregation ---")
+    summaries = get_command_area_advisories(advisories)
+    for s in summaries:
+        print(f"[{s['discharge_recommendation']}] Command: {s['command_area']} | Deficit: {s['total_deficit_mm']}mm")

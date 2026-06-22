@@ -16,7 +16,7 @@ An advanced, end-to-end satellite remote sensing pipeline and interactive dashbo
 - **Processing**: Applies Atmospheric Correction (S2_SR) and a custom **Refined Lee Speckle Filter** via local variance calculation.
 - **Feature Extraction**: Extracts NDVI, NDWI, EVI, VV, VH, and texture features (GLCM).
 - **Temporal Stacking**: Generates a 22-dimensional multi-temporal stack comparing Early Season (T1) and Late Season (T2).
-- **ML Model**: Supervised Random Forest trained dynamically on ground truth data (`data/ground_truth.csv`), achieving >85% target accuracy. Includes Explainable AI (Feature Importance) integration.
+- **ML Model**: Supervised Random Forest and XGBoost classifiers trained dynamically on ground truth data (`data/ground_truth.csv`), achieving >85% target accuracy with side-by-side comparison. Includes Explainable AI (Feature Importance) integration.
 
 ### 2. Phenology-Aware Moisture Stress Detection
 - **Time-Series Analysis**: Generates continuous NDVI/CHIRPS Rainfall time-series.
@@ -28,7 +28,7 @@ An advanced, end-to-end satellite remote sensing pipeline and interactive dashbo
 ### 3. Evapotranspiration-Driven Irrigation Advisory
 - **Real Satellite ETc**: Connects directly to the MODIS/061/MOD16A2 Global Evapotranspiration sensor to extract literal 8-day water loss measurements.
 - **Water Deficit Calculation**: Calculates `Deficit = (Real_ET0 × Kc) - Rainfall` using FAO-56 Crop Coefficients mapped to specific growth stages.
-- **Command Area Mapping**: Simulates canal networks and parses soil types (Clay Loam, Sandy Loam) to generate hyper-localized, field-level actionable irrigation advisories.
+- **Command Area Mapping**: Simulates canal networks, parses soil types (Clay Loam, Sandy Loam), and aggregates regional distributaries to advise canal gate managers on gate discharge flows (PMKSY planning).
 
 ---
 
@@ -77,11 +77,11 @@ npm run dev
 ```
 
 ### 3. Train the Machine Learning Model (Optional)
-If you wish to re-train the Random Forest and LSTM using the latest live satellite sweeps:
+If you wish to re-train the Random Forest, XGBoost, and LSTM using the latest live satellite sweeps:
 ```bash
 cd project/ml
-python crop_classifier.py
-python moisture_model.py
+python realistic_trainer.py
+python train_lstm_synthetic.py
 ```
 
 ---

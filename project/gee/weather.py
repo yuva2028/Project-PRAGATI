@@ -71,30 +71,55 @@ def get_rainfall_stats(months_back: int = 6):
     return stats.getInfo()
 
 def get_monthly_rainfall_series(months_back: int = 6):
-    """Returns monthly aggregate rainfall for time-series charts."""
+    """
+    Returns monthly aggregate rainfall (mm/month) for the past N months.
+    Aggregates CHIRPS daily data into calendar-month totals via ee.List loop.
+    Returns a list of dicts: [{ 'date': 'YYYY-MM', 'rainfall_mm': float }, ...]
+    """
     roi = get_roi()
-    start_date, end_date = get_date_range(months_back)
+    from datetime import datetime, timedelta
 
-    chirps = (
-        ee.ImageCollection('UCSB-CHG/CHIRPS/DAILY')
-        .filterBounds(roi)
-        .filterDate(start_date, end_date)
-        .select('precipitation')
-    )
+    results = []
+    now = datetime.utcnow()
 
-    def monthly_mean(image):
-        val = image.reduceRegion(
+    for i in range(months_back - 1, -1, -1):
+        # Compute first and last day of month (i months ago)
+        month_date = now.replace(day=1) - timedelta(days=30 * i)
+        year = month_date.year
+        month = month_date.month
+
+        if month == 12:
+            next_year, next_month = year + 1, 1
+        else:
+            next_year, next_month = year, month + 1
+
+        start_str = f"{year}-{month:02d}-01"
+        end_str   = f"{next_year}-{next_month:02d}-01"
+
+        chirps_month = (
+            ee.ImageCollection("UCSB-CHG/CHIRPS/DAILY")
+            .filterBounds(roi)
+            .filterDate(start_str, end_str)
+            .select("precipitation")
+        )
+
+        # Total rainfall for this month (sum of daily)
+        monthly_total = chirps_month.sum()
+        stats = monthly_total.reduceRegion(
             reducer=ee.Reducer.mean(),
             geometry=roi,
             scale=5500,
-            maxPixels=1e10
-        )
-        return ee.Feature(None, {
-            'date': image.date().format('YYYY-MM-dd'),
-            'rainfall_mm': val.get('precipitation')
-        })
+            maxPixels=1e10,
+        ).getInfo()
 
-    return chirps.map(monthly_mean)
+        mm = stats.get("precipitation")
+        if mm is not None:
+            results.append({
+                "date": f"{year}-{month:02d}",
+                "rainfall_mm": round(float(mm), 1),
+            })
+
+    return results
 
 if __name__ == '__main__':
     ee.Initialize(project='your-gee-project-id')

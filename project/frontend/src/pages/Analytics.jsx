@@ -25,19 +25,24 @@ const CHART_OPTS = {
 }
 
 export default function Analytics() {
-  const [ndviData,    setNdviData]    = useState([])
+  const [ndviData,     setNdviData]     = useState([])
+  const [phenoMetrics, setPhenoMetrics] = useState(null)
   const [rainfallData, setRainfallData] = useState(null)
-  const [loading,     setLoading]     = useState(true)
-  const [error,       setError]       = useState(null)
+  const [rainfallSeries, setRainfallSeries] = useState([])
+  const [loading,      setLoading]      = useState(true)
+  const [error,        setError]        = useState(null)
 
   useEffect(() => {
     Promise.all([
       axios.get(`${API}/api/ndvi`),
       axios.get(`${API}/api/rainfall`),
+      axios.get(`${API}/api/rainfall-series`),
     ])
-    .then(([ndviRes, rainRes]) => {
+    .then(([ndviRes, rainRes, rainSeriesRes]) => {
       setNdviData(ndviRes.data.data || [])
+      setPhenoMetrics(ndviRes.data.metrics || null)
       setRainfallData(rainRes.data)
+      setRainfallSeries(rainSeriesRes.data.data || [])
       setLoading(false)
     })
     .catch(e => { setError(e.message); setLoading(false) })
@@ -108,16 +113,9 @@ export default function Analytics() {
               {[
                 { label:'Total Rainfall (6mo)', value:`${rainfallData.total_rainfall_mm} mm`, sub:'CHIRPS Daily Aggregate', color:'#3b82f6' },
                 { label:'Avg Daily Rainfall',   value:`${rainfallData.avg_daily_rainfall_mm} mm`, sub:'CHIRPS per-pixel mean', color:'#14b8a6' },
-              ].map((k, i) => (
-                <div key={k.label} className="kpi-card fade-in-up" style={{ '--accent-gradient': `linear-gradient(135deg, ${k.color}44, ${k.color}11)`, animationDelay:`${i*0.07}s` }}>
-                  <div className="kpi-label">{k.label}</div>
-                  <div className="kpi-value" style={{ color: k.color, fontSize:24 }}>{k.value}</div>
-                  <div className="kpi-sub">{k.sub}</div>
-                </div>
-              ))}
-              {[
-                { label:'Start of Season', value:ndviData[0]?.phenology_metrics?.start_of_season || 'N/A', sub:'Algorithmic SOS', color:'#22c55e' },
-                { label:'Est. LGP', value:`${ndviData[0]?.phenology_metrics?.length_of_growing_period_days || 0} Days`, sub:'Length of Growing Period', color:'#f97316' },
+                { label:'Start of Season',      value: phenoMetrics?.start_of_season || 'N/A', sub:'Algorithmic SOS detection', color:'#22c55e' },
+                { label:'Peak Growth Date',     value: phenoMetrics?.peak_growth_date || 'N/A', sub:'Max NDVI in series', color:'#a855f7' },
+                { label:'Est. LGP',             value: phenoMetrics?.length_of_growing_period_days ? `${phenoMetrics.length_of_growing_period_days} Days` : 'N/A', sub:'Length of Growing Period', color:'#f97316' },
               ].map((k, i) => (
                 <div key={k.label} className="kpi-card fade-in-up" style={{ '--accent-gradient': `linear-gradient(135deg, ${k.color}44, ${k.color}11)`, animationDelay:`${(i+2)*0.07}s` }}>
                   <div className="kpi-label">{k.label}</div>
@@ -190,7 +188,49 @@ export default function Analytics() {
               </div>
             </div>
 
+            {/* CHIRPS Monthly Rainfall Chart */}
+            <div className="card fade-in-up">
+              <div className="card-header">
+                <span className="card-title">Monthly Rainfall (CHIRPS)</span>
+                <span style={{ fontSize:11, color:'var(--text-muted)' }}>India · 6-month · mm/month</span>
+              </div>
+              <div className="card-body">
+                {rainfallSeries.length > 0 ? (
+                  <div style={{ height:260 }}>
+                    <Bar
+                      data={{
+                        labels: rainfallSeries.map(d => d.date),
+                        datasets: [{
+                          label: 'Rainfall (mm)',
+                          data: rainfallSeries.map(d => d.rainfall_mm),
+                          backgroundColor: rainfallSeries.map(d => {
+                            const maxMm = Math.max(...rainfallSeries.map(x => x.rainfall_mm))
+                            const intensity = d.rainfall_mm / maxMm
+                            return `rgba(59,130,246,${0.30 + intensity * 0.70})`
+                          }),
+                          borderColor: '#3b82f6',
+                          borderWidth: 1,
+                          borderRadius: 5,
+                        }]
+                      }}
+                      options={{ ...CHART_OPTS,
+                        scales: { ...CHART_OPTS.scales,
+                          y: { ...CHART_OPTS.scales.y, min:0,
+                            title: { display:true, text:'Rainfall (mm)', color:'#4b7a5e' } }
+                        }
+                      }}
+                    />
+                  </div>
+                ) : (
+                  <p style={{ color:'var(--text-muted)', fontSize:12, textAlign:'center', padding:40 }}>
+                    Loading CHIRPS rainfall series...
+                  </p>
+                )}
+              </div>
+            </div>
+
             {/* Index Reference Table */}
+
             <div className="card fade-in-up">
               <div className="card-header"><span className="card-title">Index Reference</span></div>
               <div className="card-body" style={{ padding:0 }}>

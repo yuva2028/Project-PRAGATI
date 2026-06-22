@@ -1,0 +1,140 @@
+{
+  "rf": {
+    "accuracy": 95.64,
+    "accuracy_std": 1.22,
+    "test_accuracy": 93.56,
+    "kappa_coefficient": 0.9142,
+    "precision": 93.75,
+    "recall": 93.56,
+    "f1_score": 93.57,
+    "confusion_matrix": [
+      [
+        48,
+        2,
+        0,
+        1
+      ],
+      [
+        4,
+        47,
+        0,
+        1
+      ],
+      [
+        1,
+        4,
+        46,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        48
+      ]
+    ],
+    "classification_report": "              precision    recall  f1-score   support\n\n        Rice       0.91      0.94      0.92        51\n       Maize       0.89      0.90      0.90        52\n   Sugarcane       1.00      0.90      0.95        51\n      Others       0.96      1.00      0.98        48\n\n    accuracy                           0.94       202\n   macro avg       0.94      0.94      0.94       202\nweighted avg       0.94      0.94      0.94       202\n",
+    "feature_importances": {
+      "NDWI_t1": 10.36,
+      "NDVI_t2": 10.32,
+      "EVI_t2": 9.04,
+      "EVI_t1": 8.29,
+      "NDWI_t2": 7.58,
+      "B8_t1": 7.06,
+      "NDVI_t1": 6.86,
+      "B4_t1": 5.21,
+      "VV_t1": 5.07,
+      "B8_t2": 4.75,
+      "B4_t2": 4.16,
+      "VV_t2": 3.81,
+      "VH_t1": 3.2,
+      "VV_contrast_t2": 2.86,
+      "B11_t1": 2.27,
+      "VH_t2": 1.89,
+      "VV_contrast_t1": 1.83,
+      "B11_t2": 1.73,
+      "VV_entropy_t2": 1.14,
+      "VH_VV_ratio_t2": 0.9,
+      "VV_entropy_t1": 0.89,
+      "VH_VV_ratio_t1": 0.76
+    },
+    "cv_scores": [
+      93.56,
+      95.05,
+      96.04,
+      97.01,
+      96.52
+    ]
+  },
+  "xgb": {
+    "accuracy": 94.25,
+    "accuracy_std": 2.13,
+    "test_accuracy": 92.57,
+    "kappa_coefficient": 0.901,
+    "precision": 92.65,
+    "recall": 92.57,
+    "f1_score": 92.54,
+    "confusion_matrix": [
+      [
+        48,
+        2,
+        0,
+        1
+      ],
+      [
+        4,
+        45,
+        1,
+        2
+      ],
+      [
+        1,
+        4,
+        46,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        48
+      ]
+    ],
+    "classification_report": "              precision    recall  f1-score   support\n\n        Rice       0.91      0.94      0.92        51\n       Maize       0.88      0.87      0.87        52\n   Sugarcane       0.98      0.90      0.94        51\n      Others       0.94      1.00      0.97        48\n\n    accuracy                           0.93       202\n   macro avg       0.93      0.93      0.93       202\nweighted avg       0.93      0.93      0.93       202\n",
+    "feature_importances": {
+      "NDVI_t2": 17.8,
+      "NDWI_t1": 11.29,
+      "NDVI_t1": 9.57,
+      "EVI_t2": 8.55,
+      "EVI_t1": 6.79,
+      "B8_t1": 6.18,
+      "B8_t2": 5.85,
+      "B4_t1": 5.42,
+      "NDWI_t2": 4.57,
+      "VV_t1": 3.37,
+      "VV_t2": 3.13,
+      "VV_contrast_t2": 2.18,
+      "VH_t1": 2.09,
+      "B11_t1": 1.85,
+      "VV_entropy_t1": 1.84,
+      "B11_t2": 1.66,
+      "B4_t2": 1.65,
+      "VV_contrast_t1": 1.56,
+      "VH_VV_ratio_t1": 1.36,
+      "VH_VV_ratio_t2": 1.28,
+      "VH_t2": 1.18,
+      "VV_entropy_t2": 0.8
+    },
+    "cv_scores": [
+      91.09,
+      92.57,
+      95.54,
+      97.01,
+      95.02
+    ]
+  },
+  "n_train_samples": 806,
+  "n_test_samples": 202,
+  "n_features": 22,
+  "source": "Sentinel-1/2 Spectral Signature Model (IARI/IIRS India)"
+}

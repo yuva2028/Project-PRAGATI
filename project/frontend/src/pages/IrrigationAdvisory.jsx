@@ -30,14 +30,22 @@ const COMMAND_AREA = {
 
 export default function IrrigationAdvisory() {
   const [data,    setData]    = useState(null)
+  const [commandData, setCommandData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error,   setError]   = useState(null)
   const [filter,  setFilter]  = useState('ALL')
 
   useEffect(() => {
-    axios.get(`${API}/api/advisory`)
-      .then(r => { setData(r.data); setLoading(false) })
-      .catch(e => { setError(e.message); setLoading(false) })
+    Promise.all([
+      axios.get(`${API}/api/advisory`),
+      axios.get(`${API}/api/advisory/command-summary`).catch(() => null)
+    ])
+    .then(([advRes, cmdRes]) => {
+      setData(advRes.data)
+      if (cmdRes?.data) setCommandData(cmdRes.data.command_areas)
+      setLoading(false)
+    })
+    .catch(e => { setError(e.message); setLoading(false) })
   }, [])
 
   const advisories = data?.advisories || []
@@ -156,6 +164,62 @@ export default function IrrigationAdvisory() {
               </div>
             </div>
           </div>
+
+          {/* Command Area Gate Advisory Table */}
+          {commandData && (
+            <div style={{ padding:'0 32px 32px' }}>
+              <div className="card">
+                <div className="card-header" style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                  <span className="card-title">🚰 Canal Command Distributary Advisory (PMKSY Planning)</span>
+                  <span className="badge badge-none" style={{ color: 'var(--blue-400)', background: 'var(--blue-500)22' }}>Canal Gate Controller Strategy</span>
+                </div>
+                <div className="card-body" style={{ padding:0, overflowX:'auto' }}>
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th>Command Distributary</th>
+                        <th style={{ textAlign:'center' }}>Monitored Fields</th>
+                        <th style={{ textAlign:'center' }}>Critical Alerts</th>
+                        <th style={{ textAlign:'center' }}>Average VCI</th>
+                        <th style={{ textAlign:'center' }}>Total Crop Demand (mm)</th>
+                        <th style={{ textAlign:'center' }}>Total Deficit (mm)</th>
+                        <th>Recommended Discharge</th>
+                        <th>Gate Controller Action</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {commandData.map(c => (
+                        <tr key={c.command_area}>
+                          <td><strong style={{ color:'var(--blue-400)' }}>{c.command_area}</strong></td>
+                          <td style={{ textAlign:'center', fontFamily:'var(--font-mono)' }}>{c.total_fields_monitored}</td>
+                          <td style={{ textAlign:'center' }}>
+                            <span className={c.critical_fields > 0 ? 'badge badge-critical' : 'badge badge-none'}>
+                              {c.critical_fields}
+                            </span>
+                          </td>
+                          <td style={{ textAlign:'center', fontFamily:'var(--font-mono)' }}>{c.average_vci}%</td>
+                          <td style={{ textAlign:'center', fontFamily:'var(--font-mono)' }}>{c.total_crop_demand_mm}</td>
+                          <td style={{ textAlign:'center', fontFamily:'var(--font-mono)', color: c.total_deficit_mm > 0 ? '#ef4444' : '#22c55e' }}>
+                            {c.total_deficit_mm}
+                          </td>
+                          <td>
+                            <span className="badge" style={{ background: c.color+'22', color: c.color, fontWeight:700 }}>
+                              {c.discharge_recommendation}
+                            </span>
+                          </td>
+                          <td>
+                            <div style={{ fontSize:11, color:'var(--text-secondary)' }}>
+                              {c.gate_action}
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Advisory Table */}
           <div style={{ padding:'0 32px 32px' }}>

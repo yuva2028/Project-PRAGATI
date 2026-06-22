@@ -31,7 +31,8 @@ CROP_COLORS = {
     "Others":    "#f97316",   # Orange
 }
 
-MODEL_PATH = os.path.join(os.path.dirname(__file__), '..', 'backend', 'models', 'crop_rf_model.joblib')
+RF_MODEL_PATH = os.path.join(os.path.dirname(__file__), '..', 'backend', 'models', 'crop_rf_model.joblib')
+XGB_MODEL_PATH = os.path.join(os.path.dirname(__file__), '..', 'backend', 'models', 'crop_xgb_model.joblib')
 
 
 def get_training_samples_from_gee():
@@ -147,27 +148,30 @@ def train_model(df: pd.DataFrame):
     }
 
     # Save model
-    os.makedirs(os.path.dirname(MODEL_PATH), exist_ok=True)
-    joblib.dump(clf, MODEL_PATH)
-    print("Model saved to", MODEL_PATH)
+    os.makedirs(os.path.dirname(RF_MODEL_PATH), exist_ok=True)
+    joblib.dump(clf, RF_MODEL_PATH)
+    print("Model saved to", RF_MODEL_PATH)
     print("Accuracy:", metrics['accuracy'], "%")
 
     return clf, metrics
 
 
-def load_model():
-    if os.path.exists(MODEL_PATH):
-        return joblib.load(MODEL_PATH)
+def load_model(model_name: str = "rf"):
+    path = XGB_MODEL_PATH if model_name == "xgb" else RF_MODEL_PATH
+    if os.path.exists(path):
+        return joblib.load(path)
     return None
 
 
-def classify_pixel(features: list):
+def classify_pixel(features: list, model_name: str = "rf"):
     """Single pixel prediction for the API expecting a 22-element multi-temporal feature list."""
-    clf = load_model()
+    clf = load_model(model_name)
     if clf is None:
-        raise RuntimeError("Model not trained yet. Run train pipeline first.")
+        raise RuntimeError(f"{model_name.upper()} model not trained yet. Run train pipeline first.")
     X = np.array([features])
     pred = clf.predict(X)[0]
+    if model_name == "xgb":
+        pred = int(pred) + 1  # map from [0, 1, 2, 3] to [1, 2, 3, 4]
     proba = clf.predict_proba(X)[0]
     return {
         'class_id': int(pred),
