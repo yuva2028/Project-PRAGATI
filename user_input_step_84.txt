@@ -1,0 +1,9 @@
+<USER_REQUEST>
+continue
+</USER_REQUEST>
+<ADDITIONAL_METADATA>
+The current local time is: 2026-06-25T12:31:40+05:30.
+</ADDITIONAL_METADATA>
+<USER_SETTINGS_CHANGE>
+The user changed setting `Model Selection` from Claude Sonnet 4.6 (Thinking) to Gemini 3.5 Flash (High). No need to comment on this change if the user doesn't ask about it. If reporting what model you are, please use a human readable name instead of the exact string.
+</USER_SETTINGS_CHANGE>

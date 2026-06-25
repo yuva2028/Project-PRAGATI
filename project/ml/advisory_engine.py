@@ -4,7 +4,16 @@ Rule-Based System + Water Deficit Estimation
 Generates field-level irrigation advisories
 """
 
-from ml.moisture_model import STRESS_CATEGORIES, get_stress_category
+import logging
+import numpy as np
+
+logger = logging.getLogger(__name__)
+_rng = np.random.default_rng(42)
+
+try:
+    from project.ml.moisture_model import STRESS_CATEGORIES, get_stress_category
+except ImportError:
+    from ml.moisture_model import STRESS_CATEGORIES, get_stress_category
 
 # ──────────────────────────────────────────
 # Crop Water Requirements (mm/day) by growth stage
@@ -72,8 +81,8 @@ def get_regional_et0(period_days: int = 8) -> float:
         if base_et is not None:
             # MOD16A2 is an 8-day total ET.
             return (base_et / 8) * period_days
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"[WARN] MODIS ET0 fetch failed, using reference ET0: {e}")
     return REFERENCE_ET0_MM_DAY * period_days
 
 def compute_crop_water_requirement(crop: str, stage: str, regional_et0: float) -> float:
@@ -127,8 +136,9 @@ def generate_advisory(
 
 
 def generate_bulk_advisories(fields: list = None) -> list:
+    global _rng
     if not fields:
-        import random
+        _rng = np.random.default_rng(42)
         # Simulate fields across all major Indian states
         STATE_CENTERS = [
             ("Punjab", 30.9, 75.8), ("UP", 26.8, 80.9), ("MP", 23.2, 77.4),
@@ -144,16 +154,16 @@ def generate_bulk_advisories(fields: list = None) -> list:
         soils = ["Clay Loam", "Sandy Loam", "Silt", "Black Cotton"]
         
         for i in range(1, 151): # Increased to 150 fields to cover all states
-            state_name, base_lat, base_lng = random.choice(STATE_CENTERS)
+            state_name, base_lat, base_lng = STATE_CENTERS[int(_rng.integers(0, len(STATE_CENTERS)))]
             fields.append({
                 "field_id": f"IND-{state_name[:3].upper()}-{1000+i}",
-                "crop": random.choice(crops),
-                "stage": random.choice(stages),
-                "vci": random.randint(10, 95),
-                "rainfall_mm": random.randint(0, 30),
-                "lat": base_lat + random.uniform(-1.5, 1.5),
-                "lng": base_lng + random.uniform(-1.5, 1.5),
-                "soil_type": random.choice(soils)
+                "crop": crops[int(_rng.integers(0, len(crops)))],
+                "stage": stages[int(_rng.integers(0, len(stages)))],
+                "vci": int(_rng.integers(10, 95 + 1)),
+                "rainfall_mm": int(_rng.integers(0, 30 + 1)),
+                "lat": base_lat + float(_rng.uniform(-1.5, 1.5)),
+                "lng": base_lng + float(_rng.uniform(-1.5, 1.5)),
+                "soil_type": soils[int(_rng.integers(0, len(soils)))]
             })
 
     PRIORITY_ORDER = {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3, "NONE": 4}
@@ -277,9 +287,8 @@ def get_command_area_advisories(advisories: list) -> list:
             "water_deficit_ratio": round(total_water_needed / max(1, total_etc) * 100, 1)
         })
 
-    # Sort so that highest water deficits / gate discharge levels are first
-    PRIO = {"MAXIMUM DISCHARGE": 0, "MODERATE DISCHARGE": 1, "MINIMUM FLOW": 2, "CLOSED (SURPLUS)": 3}
-    return sorted(summary_list, key=lambda x: PRIO.get(x["discharge_recommendation"], 4))
+    # Sort so command areas with the largest total water deficit appear first.
+    return sorted(summary_list, key=lambda x: x["total_deficit_mm"], reverse=True)
 
 
 if __name__ == '__main__':

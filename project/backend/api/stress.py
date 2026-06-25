@@ -1,29 +1,42 @@
 """
 API Router: Moisture Stress Detection
 GET /api/stress-map
-GET /api/stress-tile
+GET /api/stress-geojson
 GET /api/stress-stats
 GET /api/phenology
 """
 
+import logging
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
 from fastapi import APIRouter, HTTPException
+
+logger = logging.getLogger(__name__)
+
+try:
+    from project.backend.utils.ndvi_series import generate_synthetic_ndvi_series, get_phenology_metrics
+except ImportError as e:
+    logger.warning("Falling back to backend NDVI utility import: %s", e)
+    from backend.utils.ndvi_series import generate_synthetic_ndvi_series, get_phenology_metrics
+
+try:
+    from project.ml.moisture_model import PHENOLOGY_STAGES, STRESS_CATEGORIES
+except ImportError as e:
+    logger.warning("Falling back to local moisture model constants import: %s", e)
+    from ml.moisture_model import PHENOLOGY_STAGES, STRESS_CATEGORIES
 
 router = APIRouter()
 
-STRESS_CATEGORIES = {
-    (0,  20):  {"label": "Severe Stress",   "color": "#dc2626", "level": 5},
-    (20, 40):  {"label": "High Stress",     "color": "#f97316", "level": 4},
-    (40, 60):  {"label": "Moderate Stress", "color": "#eab308", "level": 3},
-    (60, 80):  {"label": "Low Stress",      "color": "#84cc16", "level": 2},
-    (80, 100): {"label": "Healthy",         "color": "#22c55e", "level": 1},
-}
+_GT_DF_CACHE: "pd.DataFrame | None" = None
 
-PHENOLOGY_STAGES = {
-    "Sowing":     {"ndvi_range": (0.0, 0.2), "color": "#fbbf24"},
-    "Vegetative": {"ndvi_range": (0.2, 0.5), "color": "#22c55e"},
-    "Flowering":  {"ndvi_range": (0.5, 0.7), "color": "#a855f7"},
-    "Maturity":   {"ndvi_range": (0.7, 1.0), "color": "#f59e0b"},
-}
+
+def _load_ground_truth(csv_path) -> "pd.DataFrame":
+    global _GT_DF_CACHE
+    if _GT_DF_CACHE is None:
+        _GT_DF_CACHE = pd.read_csv(csv_path)
+    return _GT_DF_CACHE
 
 # ──────────────────────────────────────────
 # Realistic India stress distribution
@@ -45,13 +58,17 @@ async def get_stress_map():
     source = "VCI Model | NRSC India Drought Monitor Baseline"
 
     try:
-        from ml.moisture_model import get_stress_stats
+        try:
+            from project.ml.moisture_model import get_stress_stats
+        except ImportError as e:
+            logger.warning("Falling back to local moisture_model import: %s", e)
+            from ml.moisture_model import get_stress_stats
         stats = get_stress_stats()
         if stats:
             stress_dist = stats
             source = "GEE VCI (Sentinel-2 Live)"
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("Live stress stats unavailable: %s", e)
 
     if not stress_dist:
         stress_dist = INDIA_STRESS_BASELINE
@@ -59,7 +76,7 @@ async def get_stress_map():
 
     return {
         "status": "success",
-        "pilot_area": "India",
+        "pilot_area": "Karnataka, India",
         "source": source,
         "index_used": "Deep Learning LSTM (Moisture Stress)",
         "formula": "LSTM(NDVI_seq, NDWI_seq, Precip_seq)",
@@ -70,31 +87,61 @@ async def get_stress_map():
         "stress_distribution": stress_dist,
     }
 
-
-@router.get("/stress-tile")
-async def get_stress_tile():
-    """Returns GEE tile URL for VCI stress map. Falls back gracefully when GEE unavailable."""
+@router.get("/stress-geojson")
+async def get_stress_geojson():
+    """
+    Returns moisture stress as GeoJSON FeatureCollection for Leaflet rendering.
+    Uses VCI computed per ground-truth point with synthetic but reproducible values.
+    """
     try:
-        from ml.moisture_model import get_vci_tile_url
-        try:
-            tile_url = get_vci_tile_url()
-            return {
-                "layer": "VCI Stress Map",
-                "tile_url": tile_url,
-                "source": "GEE Live",
-                "palette": ["#dc2626", "#f97316", "#eab308", "#84cc16", "#22c55e"],
-            }
-        except Exception as gee_err:
-            print(f"GEE tile error (non-fatal): {gee_err}")
-    except Exception:
-        pass
+        from project.ml.moisture_model import compute_pixel_stress
+    except ImportError as e:
+        logger.warning("Falling back to local compute_pixel_stress import: %s", e)
+        from ml.moisture_model import compute_pixel_stress
 
-    # Non-error fallback with informative response
+    csv_path = Path(__file__).resolve().parents[2] / "data" / "ground_truth.csv"
+    try:
+        df = _load_ground_truth(csv_path)
+    except Exception as e:
+        logger.warning("ground_truth.csv not found for stress GeoJSON: %s", e)
+        raise HTTPException(status_code=500, detail=f"ground_truth.csv not found: {e}")
+
+    features = []
+    crop_names = {1: "Rice", 2: "Maize", 3: "Sugarcane", 4: "Others"}
+    for i, row in df.iterrows():
+        rng_i = np.random.default_rng(99 + i)
+        ndvi_current = float(rng_i.uniform(0.15, 0.80))
+        ndvi_min     = max(0.05, ndvi_current - float(rng_i.uniform(0.05, 0.25)))
+        ndvi_max     = min(0.90, ndvi_current + float(rng_i.uniform(0.05, 0.25)))
+        ndwi         = float(ndvi_current - rng_i.uniform(0.30, 0.50))
+        vv           = float(rng_i.uniform(-18.0, -10.0))
+        vh           = float(rng_i.uniform(-24.0, -14.0))
+        stress       = compute_pixel_stress(ndvi_current, ndvi_min, ndvi_max, ndwi, vv, vh)
+        crop_name    = crop_names.get(int(row.get("crop_class", 4)), "Others")
+
+        features.append({
+            "type": "Feature",
+            "geometry": {
+                "type": "Point",
+                "coordinates": [float(row["longitude"]), float(row["latitude"])]
+            },
+            "properties": {
+                "vci":             round(stress["vci"], 1),
+                "smi":             round(stress["smi"], 1),
+                "stress_label":    stress["stress_label"],
+                "stress_color":    stress["stress_color"],
+                "stress_level":    stress["stress_level"],
+                "phenology_stage": stress["phenology_stage"],
+                "crop_name":       crop_name,
+                "ndvi":            round(ndvi_current, 3),
+                "field_id":        f"KAR-{i + 1:03d}",
+            }
+        })
+
     return {
-        "layer": "VCI Stress Map",
-        "tile_url": "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
-        "source": "Base Map (GEE auth required for VCI overlay)",
-        "palette": ["#dc2626", "#f97316", "#eab308", "#84cc16", "#22c55e"],
+        "type": "FeatureCollection",
+        "features": features,
+        "metadata": {"total_points": len(features), "pilot_area": "Karnataka, India"}
     }
 
 
@@ -102,7 +149,11 @@ async def get_stress_tile():
 async def get_phenology():
     """Returns NDVI time series with phenology stage annotations."""
     try:
-        from ml.moisture_model import get_ndvi_time_series_for_stress
+        try:
+            from project.ml.moisture_model import get_ndvi_time_series_for_stress
+        except ImportError as e:
+            logger.warning("Falling back to local phenology import: %s", e)
+            from ml.moisture_model import get_ndvi_time_series_for_stress
         res = get_ndvi_time_series_for_stress()
         if res.get("time_series"):
             return {
@@ -115,49 +166,16 @@ async def get_phenology():
                     for s, i in PHENOLOGY_STAGES.items()
                 },
             }
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("Live phenology unavailable: %s", e)
 
-    # Use the same realistic series from analytics module
-    # Generate realistic NDVI series inline (avoids circular import)
-    from datetime import datetime, timedelta
-    import math
-    base_date = datetime.now() - timedelta(days=180)
-    ndvi_pattern = [
-        0.18, 0.20, 0.22, 0.21, 0.24, 0.27, 0.31, 0.35, 0.38,
-        0.42, 0.47, 0.52, 0.57, 0.62, 0.65, 0.68, 0.70, 0.72,
-        0.71, 0.69, 0.65, 0.61, 0.57, 0.53, 0.48, 0.43, 0.38,
-        0.34, 0.31, 0.28, 0.25, 0.23, 0.22, 0.21, 0.20, 0.19,
-    ]
-    PMAP = [(0.0,0.2,"Sowing"),(0.2,0.5,"Vegetative"),(0.5,0.7,"Flowering"),(0.7,1.0,"Maturity")]
-    def _stage(ndvi):
-        for lo,hi,name in PMAP:
-            if lo <= ndvi < hi:
-                return name
-        return "Maturity"
-    series = []
-    for i, ndvi in enumerate(ndvi_pattern):
-        date = base_date + timedelta(days=i * (180 // len(ndvi_pattern)))
-        ndvi_val = round(ndvi + (math.sin(i * 0.3) * 0.01), 4)
-        vci = round(max(0, min(100, (ndvi_val - 0.18) / (0.72 - 0.18) * 100)), 1)
-        series.append({"date": date.strftime("%Y-%m-%d"), "ndvi": ndvi_val, "phenology_stage": _stage(ndvi_val), "vci": vci})
-    series = sorted(series, key=lambda x: x["date"])
-    # Compute metrics
-    ndvis = [r["ndvi"] for r in series]
-    peak_idx = int(max(range(len(ndvis)), key=lambda i: ndvis[i]))
-    sos_idx = int(min(range(peak_idx + 1), key=lambda i: ndvis[i])) if peak_idx > 0 else 0
-    try:
-        from datetime import datetime as _dt
-        sos_dt   = _dt.strptime(series[sos_idx]["date"], "%Y-%m-%d")
-        peak_dt  = _dt.strptime(series[peak_idx]["date"], "%Y-%m-%d")
-        lgp_days = (peak_dt - sos_dt).days + 30
-    except Exception:
-        lgp_days = 120
-    metrics = {"start_of_season": series[sos_idx]["date"], "peak_growth_date": series[peak_idx]["date"], "length_of_growing_period_days": lgp_days}
+    # Use the shared NDVI utility to avoid code duplication
+    series = generate_synthetic_ndvi_series()
+    metrics = get_phenology_metrics(series)
 
     return {
         "status": "success",
-        "source": "Sentinel-2 | India Kharif Season Model",
+        "source": "Sentinel-2 | Karnataka Kharif Season Model",
         "data": series,
         "phenology_metrics": metrics,
         "stages": {

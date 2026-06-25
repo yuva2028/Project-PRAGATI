@@ -23,10 +23,20 @@ ENV/
 .env
 .env.local
 .env.*.local
+**/.env
+.env.*
+!.env.example
 *.key
 *.pem
 serviceAccount*.json
 gee-key*.json
+
+# GEE Service Account Keys
+**/gee-key*.json
+**/gee-key.json
+**/service-account*.json
+**/credentials.json
+*.pth.backup
 
 # GEE credentials (stored by earthengine authenticate)
 # These live in %APPDATA%\earthengine\ — no need to commit
@@ -36,6 +46,7 @@ project/backend/models/*.joblib
 project/ml/weights/*.h5
 project/ml/weights/*.pt
 project/ml/weights/*.pkl
+!project/ml/weights/*.pth
 
 # Node / frontend
 node_modules/
