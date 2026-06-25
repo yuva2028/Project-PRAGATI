@@ -1,131 +1,231 @@
 # Member 2: Crop Type Classification
 
-This module contains the first prototype layer for crop type classification in the Project PRAGATI ISRO Hackathon workflow. It focuses only on preparing satellite raster data, extracting basic spectral features, and training a baseline Random Forest classifier.
+This module implements the crop type classification component for Project
+PRAGATI. It is designed for an ISRO Hackathon demonstration where Sentinel
+imagery is converted into machine-learning features, trained with a robust
+baseline classifier, evaluated with defensible metrics, and exported as
+GeoTIFF outputs for downstream team members.
 
-This is intentionally limited to the first 30 percent of the work. It does not include dashboard code, moisture stress analysis, Streamlit, or XGBoost.
+The module does not include dashboard code, Streamlit UI code, or moisture
+stress logic.
 
-## Purpose
+## What This Module Does
 
-The purpose of the Member 2 module is to classify crop types from Sentinel-2 imagery using supervised machine learning.
-
-At this stage, the module supports:
-
-- Loading Sentinel-2 GeoTIFF bands.
-- Loading crop label rasters.
-- Converting raster pixels into a tabular machine learning dataset.
-- Computing basic spectral indices such as NDVI and NDWI.
-- Training a baseline Random Forest crop classifier.
-- Generating an accuracy score and confusion matrix.
-
-The module is designed as a clean starting point for the hackathon prototype. Future work can add better temporal features, crop calendars, class mappings, geospatial validation, tuned models, and full prediction map export.
-
-## Input Data Required
-
-The expected inputs are:
-
-1. Sentinel-2 GeoTIFF imagery
-   - A multi-band GeoTIFF, or a raster stack containing the Sentinel-2 bands required for classification.
-   - At minimum, NDVI requires red and near-infrared bands.
-   - NDWI requires green and near-infrared bands.
-
-2. Crop label raster
-   - A single-band raster where each pixel value is a crop class ID.
-   - Label value `0` is treated as unlabeled and is ignored during training.
-   - The label raster should have the same height, width, CRS, and transform as the Sentinel-2 image stack.
-
-3. Crop class mapping
-   - A mapping from class IDs to crop names is still required.
-   - Example: `1 = Rice`, `2 = Wheat`, `3 = Cotton`.
-   - TODO: Replace example class IDs with the official hackathon or dataset-specific crop class mapping.
-
-## Expected Outputs
-
-The current prototype produces:
-
-- A trained Random Forest model object in memory.
-- Train/test accuracy printed to the console.
-- A confusion matrix image saved to:
-
-```text
-member2_crop_classification/outputs/confusion_matrix.png
-```
-
-Future outputs may include:
-
-- Saved model files in `models/`.
-- Classified crop maps as GeoTIFF files.
-- Per-class precision, recall, and F1-score reports.
-- District or field-level crop area summaries.
-
-## Workflow Overview
-
-The intended workflow is:
-
-1. Place Sentinel-2 imagery and label rasters in `data/`.
-2. Use `scripts/load_data.py` to read raster bands and labels.
-3. Convert image pixels and labels into a tabular dataset.
-4. Use `scripts/feature_engineering.py` to calculate NDVI, NDWI, and other feature arrays.
-5. Use `scripts/train_rf.py` to train and evaluate a Random Forest classifier.
-6. Review the confusion matrix in `outputs/`.
-
-Recommended project flow:
-
-```text
-Sentinel-2 GeoTIFF + Label Raster
-        |
-        v
-Raster Loading and Validation
-        |
-        v
-Pixel Table Creation
-        |
-        v
-Spectral Feature Engineering
-        |
-        v
-Random Forest Training
-        |
-        v
-Accuracy + Confusion Matrix
-```
+- Loads Sentinel-2 optical GeoTIFF bands.
+- Optionally loads aligned Sentinel-1 VV and VH bands.
+- Computes NDVI, NDWI, EVI, SAVI, and optional VH/VV ratio.
+- Builds a labeled pixel table from raster data and crop labels.
+- Trains a Random Forest classifier with stratified train/test split.
+- Runs GridSearchCV for Random Forest hyperparameter tuning.
+- Generates evaluation metrics and publication-quality plots.
+- Runs full-raster inference and exports classified crop maps.
+- Writes `outputs/crop_predictions.tif` for Member 3 moisture-stress work.
+- Provides optional XGBoost training and RF-vs-XGB comparison.
 
 ## Folder Structure
 
 ```text
 member2_crop_classification/
+├── config/
+│   └── config.yaml
 ├── data/
-├── notebooks/
-├── scripts/
-│   ├── feature_engineering.py
-│   ├── load_data.py
-│   └── train_rf.py
+├── logs/
+│   └── training.log
 ├── models/
 ├── outputs/
+├── scripts/
+│   ├── evaluate.py
+│   ├── feature_engineering.py
+│   ├── inference.py
+│   ├── load_data.py
+│   ├── train_rf.py
+│   ├── train_xgb.py
+│   ├── utils.py
+│   └── visualize.py
+├── notebooks/
 └── README.md
 ```
 
-## Dependencies
+## Setup
 
-The module requires:
-
-- `numpy`
-- `pandas`
-- `rasterio`
-- `scikit-learn`
-- `matplotlib`
-
-Install the project requirements from the repository root:
+From the repository root:
 
 ```bash
 pip install -r requirements.txt
 ```
 
-## Current Limitations and TODOs
+Optional XGBoost support:
 
-- TODO: Add actual Sentinel-2 file paths from the hackathon dataset.
-- TODO: Add the official crop class ID to crop name mapping.
-- TODO: Confirm Sentinel-2 band order for the provided raster stack.
-- TODO: Add temporal features if multi-date imagery is available.
-- TODO: Add model persistence after the baseline is validated.
-- TODO: Add prediction map export after training and validation are stable.
+```bash
+pip install xgboost
+```
+
+## Dataset Structure
+
+Place data under:
+
+```text
+member2_crop_classification/data/
+├── sentinel2_stack.tif
+├── crop_labels.tif
+└── sentinel1_stack.tif        # optional
+```
+
+Expected inputs:
+
+- `sentinel2_stack.tif`: GeoTIFF containing Sentinel-2 bands.
+- `crop_labels.tif`: single-band crop label raster.
+- `sentinel1_stack.tif`: optional aligned VV/VH raster.
+
+Important assumptions:
+
+- Label value `0` means unlabeled or no crop label.
+- Label raster must align with imagery in CRS, transform, width, and height.
+- Sentinel-1, if used, must also be aligned to the Sentinel-2 grid.
+- TODO: Update `config/config.yaml` with the official crop class mapping.
+- TODO: Confirm the exact Sentinel-2 band indexes for the provided dataset.
+
+## Configuration
+
+All operational paths, band mappings, model parameters, and outputs are stored
+in:
+
+```text
+member2_crop_classification/config/config.yaml
+```
+
+Key sections:
+
+- `paths`: input data, model, output, and log locations.
+- `sentinel2.band_indexes`: 1-based rasterio indexes for optical bands.
+- `sentinel1`: optional VV/VH settings.
+- `features`: spectral indices and raw-band inclusion.
+- `model.random_forest`: production Random Forest parameters.
+- `model.grid_search`: GridSearchCV search space.
+- `evaluation.class_names`: crop class ID to crop name mapping.
+
+## Training
+
+Run from the repository root:
+
+```bash
+python member2_crop_classification/scripts/train_rf.py --config member2_crop_classification/config/config.yaml
+```
+
+Training performs:
+
+- Raster loading.
+- Feature engineering.
+- Labeled pixel table creation.
+- Stratified train/test split.
+- Random Forest fitting.
+- GridSearchCV hyperparameter search.
+- Best-model saving.
+- Evaluation artifact generation.
+- Training logs.
+
+The trained model is saved to:
+
+```text
+member2_crop_classification/models/random_forest_best.joblib
+```
+
+## Evaluation
+
+Evaluate the saved model:
+
+```bash
+python member2_crop_classification/scripts/evaluate.py --config member2_crop_classification/config/config.yaml
+```
+
+Generated files:
+
+```text
+outputs/confusion_matrix.png
+outputs/classification_report.txt
+outputs/evaluation_metrics.json
+outputs/class_distribution.png
+outputs/feature_importance.png
+```
+
+Metrics include:
+
+- Overall Accuracy
+- Cohen Kappa
+- Precision
+- Recall
+- F1 Score
+- Per-class precision, recall, F1, and support
+
+## Inference
+
+Run full-raster crop map generation:
+
+```bash
+python member2_crop_classification/scripts/inference.py --config member2_crop_classification/config/config.yaml
+```
+
+Generated files:
+
+```text
+outputs/crop_map.tif
+outputs/crop_predictions.tif
+outputs/crop_map.png
+outputs/crop_statistics.json
+```
+
+`crop_predictions.tif` is the integration handoff file for Member 3.
+
+`crop_statistics.json` contains:
+
+- Crop counts
+- Crop percentages
+- Crop class names
+- CRS and raster metadata
+- Generation timestamp
+
+## Optional XGBoost Stretch Goal
+
+After installing XGBoost:
+
+```bash
+python member2_crop_classification/scripts/train_xgb.py --config member2_crop_classification/config/config.yaml
+```
+
+This trains an optional XGBoost classifier and writes:
+
+```text
+models/xgboost_best.joblib
+outputs/model_comparison.csv
+```
+
+The comparison table includes Random Forest and XGBoost accuracy, kappa,
+weighted precision, weighted recall, weighted F1, and training time.
+
+## Outputs
+
+| Output | Purpose |
+| --- | --- |
+| `models/random_forest_best.joblib` | Best trained Random Forest model bundle |
+| `outputs/confusion_matrix.png` | Model confusion matrix |
+| `outputs/classification_report.txt` | Text evaluation report |
+| `outputs/evaluation_metrics.json` | Machine-readable metrics |
+| `outputs/class_distribution.png` | Labeled training pixel distribution |
+| `outputs/feature_importance.png` | Tree-based feature importance |
+| `outputs/crop_map.tif` | Classified crop map GeoTIFF |
+| `outputs/crop_predictions.tif` | Member 3 integration raster |
+| `outputs/crop_map.png` | Visual crop map preview |
+| `outputs/crop_statistics.json` | Crop counts, percentages, and metadata |
+| `logs/training.log` | Reproducible training log |
+
+## Engineering Notes
+
+- All spectral indices use vectorized NumPy operations.
+- Division by zero is handled through safe array division.
+- NaN and invalid pixels are excluded from training and left as no-prediction
+  pixels during inference.
+- Sentinel-1 support is optional. If unavailable, the pipeline logs a warning
+  and continues with Sentinel-2 features.
+- Random seeds are controlled through YAML configuration.
+- Paths are read from config and resolved relative to this module.
 

@@ -1,0 +1,121 @@
+project:
+  name: Project PRAGATI - Member 2 Crop Type Classification
+  random_seed: 42
+
+paths:
+  sentinel2: data/sentinel2_stack.tif
+  sentinel1: null
+  labels: data/crop_labels.tif
+  training_table: data/training_pixels.csv
+  model: models/random_forest_best.joblib
+  xgboost_model: models/xgboost_best.joblib
+  outputs_dir: outputs
+  logs_dir: logs
+  confusion_matrix: outputs/confusion_matrix.png
+  classification_report: outputs/classification_report.txt
+  feature_importance: outputs/feature_importance.png
+  class_distribution: outputs/class_distribution.png
+  crop_map_tif: outputs/crop_map.tif
+  crop_predictions_tif: outputs/crop_predictions.tif
+  crop_map_png: outputs/crop_map.png
+  crop_statistics: outputs/crop_statistics.json
+  metrics_json: outputs/evaluation_metrics.json
+  model_comparison: outputs/model_comparison.csv
+
+raster:
+  label_band: 1
+  unlabeled_value: 0
+  nodata_values: []
+  reflectance_scale: 10000.0
+
+sentinel2:
+  # TODO: Confirm the exact band order for the hackathon raster stack.
+  # These defaults match a full Sentinel-2 stack with 1-based rasterio indexes.
+  # For a compact 4-band stack, update to blue: 1, green: 2, red: 3, nir: 4.
+  band_indexes:
+    blue: 2
+    green: 3
+    red: 4
+    nir: 8
+
+sentinel1:
+  enabled: false
+  # TODO: Set paths.sentinel1 and enabled: true when aligned Sentinel-1 data
+  # becomes available.
+  band_indexes:
+    vv: 1
+    vh: 2
+  include_ratio: true
+
+features:
+  include_raw_bands: true
+  indices:
+    - ndvi
+    - ndwi
+    - evi
+    - savi
+  savi_l: 0.5
+  evi:
+    gain: 2.5
+    c1: 6.0
+    c2: 7.5
+    canopy_background: 1.0
+
+training:
+  load_existing_table: false
+  save_training_table: true
+  target_column: label
+  test_size: 0.2
+
+model:
+  random_forest:
+    n_estimators: 500
+    max_depth: null
+    min_samples_leaf: 2
+    class_weight: balanced
+    n_jobs: -1
+    random_state: 42
+  grid_search:
+    enabled: true
+    cv: 3
+    scoring: f1_weighted
+    n_jobs: -1
+    param_grid:
+      n_estimators:
+        - 300
+        - 500
+      max_depth:
+        - null
+        - 20
+        - 40
+      min_samples_leaf:
+        - 1
+        - 2
+        - 4
+  xgboost:
+    enabled: false
+    n_estimators: 500
+    max_depth: 6
+    learning_rate: 0.05
+    subsample: 0.9
+    colsample_bytree: 0.9
+    objective: multi:softmax
+    eval_metric: mlogloss
+    tree_method: hist
+    random_state: 42
+
+evaluation:
+  # TODO: Replace placeholder crop names with the official dataset mapping.
+  class_names:
+    "1": Crop_1
+    "2": Crop_2
+    "3": Crop_3
+
+inference:
+  prediction_chunk_size: 250000
+  nodata_value: 0
+
+logging:
+  level: INFO
+  file: training.log
+

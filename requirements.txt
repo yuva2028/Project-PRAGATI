@@ -3,4 +3,8 @@ pandas
 rasterio
 scikit-learn
 matplotlib
+PyYAML
+joblib
 
+# Optional stretch-goal dependency:
+# xgboost
