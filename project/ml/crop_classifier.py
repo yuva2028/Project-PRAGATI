@@ -8,6 +8,7 @@ import ee
 import numpy as np
 import pandas as pd
 from sklearn.ensemble import RandomForestClassifier
+from xgboost import XGBClassifier
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import (accuracy_score, precision_score, recall_score,
                              f1_score, confusion_matrix, classification_report,
@@ -128,15 +129,27 @@ def train_model(df: pd.DataFrame):
     )
     clf.fit(X_train, y_train)
 
-    # Metrics
+    # Train XGBoost
+    y_train_xgb = y_train - 1
+    y_test_xgb = y_test - 1
+    xgb_clf = XGBClassifier(
+        n_estimators=200,
+        max_depth=10,
+        learning_rate=0.1,
+        subsample=0.8,
+        random_state=42,
+        n_jobs=-1,
+        eval_metric='mlogloss'
+    )
+    xgb_clf.fit(X_train, y_train_xgb)
+
+    # Metrics for RF
     y_pred = clf.predict(X_test)
-    # Extract Feature Importances
     importances = clf.feature_importances_
     feature_importance_dict = {feat: round(float(imp)*100, 2) for feat, imp in zip(feature_cols, importances)}
-    # Sort descending
     feature_importance_dict = dict(sorted(feature_importance_dict.items(), key=lambda item: item[1], reverse=True))
 
-    metrics = {
+    metrics_rf = {
         'accuracy':  round(accuracy_score(y_test, y_pred) * 100, 2),
         'kappa_coefficient': round(cohen_kappa_score(y_test, y_pred), 4),
         'precision': round(precision_score(y_test, y_pred, average='weighted', zero_division=0) * 100, 2),
@@ -147,13 +160,38 @@ def train_model(df: pd.DataFrame):
         'feature_importances': feature_importance_dict
     }
 
-    # Save model
+    # Metrics for XGBoost
+    y_pred_xgb_raw = xgb_clf.predict(X_test)
+    y_pred_xgb = y_pred_xgb_raw + 1
+    xgb_importances = xgb_clf.feature_importances_
+    xgb_fi_dict = {feat: round(float(imp)*100, 2) for feat, imp in zip(feature_cols, xgb_importances)}
+    xgb_fi_dict = dict(sorted(xgb_fi_dict.items(), key=lambda item: item[1], reverse=True))
+    
+    metrics_xgb = {
+        'accuracy':  round(accuracy_score(y_test, y_pred_xgb) * 100, 2),
+        'kappa_coefficient': round(cohen_kappa_score(y_test, y_pred_xgb), 4),
+        'precision': round(precision_score(y_test, y_pred_xgb, average='weighted', zero_division=0) * 100, 2),
+        'recall':    round(recall_score(y_test, y_pred_xgb, average='weighted', zero_division=0) * 100, 2),
+        'f1_score':  round(f1_score(y_test, y_pred_xgb, average='weighted', zero_division=0) * 100, 2),
+        'confusion_matrix': confusion_matrix(y_test, y_pred_xgb).tolist(),
+        'classification_report': classification_report(y_test, y_pred_xgb, target_names=[CROP_CLASSES[i] for i in sorted(CROP_CLASSES)]),
+        'feature_importances': xgb_fi_dict
+    }
+
+    metrics = {
+        "rf": metrics_rf,
+        "xgb": metrics_xgb
+    }
+
+    # Save models
     os.makedirs(os.path.dirname(RF_MODEL_PATH), exist_ok=True)
     joblib.dump(clf, RF_MODEL_PATH)
-    print("Model saved to", RF_MODEL_PATH)
-    print("Accuracy:", metrics['accuracy'], "%")
+    joblib.dump(xgb_clf, XGB_MODEL_PATH)
+    print("Models saved to", os.path.dirname(RF_MODEL_PATH))
+    print("RF Accuracy:", metrics_rf['accuracy'], "%")
+    print("XGB Accuracy:", metrics_xgb['accuracy'], "%")
 
-    return clf, metrics
+    return clf, xgb_clf, metrics
 
 
 def load_model(model_name: str = "rf"):
@@ -206,6 +244,11 @@ if __name__ == '__main__':
     if 'crop_class' in df.columns:
         print(df['crop_class'].value_counts())
 
-    clf, metrics = train_model(df)
+    clf_rf, clf_xgb, metrics = train_model(df)
     print("Training complete!")
-    print("Metrics:", json.dumps({k: v for k, v in metrics.items() if k != 'confusion_matrix'}, indent=2))
+    
+    metrics_summary = {
+        "rf_accuracy": metrics["rf"]["accuracy"],
+        "xgb_accuracy": metrics["xgb"]["accuracy"]
+    }
+    print("Metrics:", json.dumps(metrics_summary, indent=2))
