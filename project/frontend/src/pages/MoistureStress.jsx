@@ -38,17 +38,26 @@ export default function MoistureStress({ userCoords }) {
   const { map, mapsApi } = useGoogleMap(mapRef, { center, zoom: 7 })
 
   useEffect(() => {
+    setLoading(true)
+    const params = userCoords ? `?lat=${userCoords.lat}&lng=${userCoords.lng}` : ''
     Promise.all([
       axios.get(`${API}/api/stress-map`),
       axios.get(`${API}/api/phenology`),
-      axios.get(`${API}/api/stress-geojson`).catch(() => null),
+      axios.get(`${API}/api/stress-geojson${params}`).catch(() => null),
     ]).then(([stressRes, phenoRes, sgRes]) => {
       setStressData(stressRes.data)
       setPhenology(phenoRes.data.data || [])
       if (sgRes?.data?.features) setStressPoints(sgRes.data.features)
       setLoading(false)
     }).catch(e => { setError(e.message); setLoading(false) })
-  }, [])
+  }, [userCoords])
+
+  // Pan map when userCoords change
+  useEffect(() => {
+    if (map && userCoords) {
+      map.panTo(userCoords);
+    }
+  }, [map, userCoords])
 
   // Draw stress points on Google Map
   useEffect(() => {

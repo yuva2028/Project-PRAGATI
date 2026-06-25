@@ -117,6 +117,20 @@ def generate_advisory(
     deficit = compute_water_deficit(crop, stage, rainfall_mm, regional_et0)
     water_to_apply = max(0, deficit)  # Don't apply negative water
 
+    # Calculate a simple confidence score
+    confidence = 95.0
+    if vci < 10 or vci > 90:
+        confidence -= 5.0
+    if rainfall_mm == 0:
+        confidence -= 2.0
+        
+    explanation = (
+        f"Model detected {stress_label} based on VCI ({round(vci, 1)}). "
+        f"For {crop} in {stage} stage, crop water requirement is {etc} mm. "
+        f"With {rainfall_mm} mm rainfall, the deficit is {deficit} mm. "
+        f"{rule['message']} to prevent yield loss."
+    )
+
     return {
         "field_id": field_id,
         "crop": crop,
@@ -129,42 +143,59 @@ def generate_advisory(
         "water_to_apply_mm": round(water_to_apply, 1),
         "urgency": rule["urgency"],
         "recommendation": f"{crop} + {stress_label} → {rule['message']}",
+        "explanation": explanation,
+        "confidence_score": round(confidence, 1),
         "within_days": rule["within_days"],
         "priority": rule["priority"],
         "advisory_color": rule["color"],
     }
 
 
-def generate_bulk_advisories(fields: list = None) -> list:
+def generate_bulk_advisories(fields: list = None, lat: float = None, lng: float = None) -> list:
     global _rng
     if not fields:
         _rng = np.random.default_rng(42)
-        # Simulate fields across all major Indian states
-        STATE_CENTERS = [
-            ("Punjab", 30.9, 75.8), ("UP", 26.8, 80.9), ("MP", 23.2, 77.4),
-            ("Maharashtra", 19.1, 73.0), ("Karnataka", 15.3, 75.7),
-            ("Tamil Nadu", 11.0, 78.0), ("West Bengal", 22.9, 88.4),
-            ("Gujarat", 23.0, 72.0), ("Andhra Pradesh", 16.5, 80.6),
-            ("Rajasthan", 26.9, 73.8), ("Bihar", 25.6, 85.1)
-        ]
         
         fields = []
         crops = ["Rice", "Maize", "Sugarcane", "Others"]
         stages = ["Sowing", "Vegetative", "Flowering", "Maturity"]
         soils = ["Clay Loam", "Sandy Loam", "Silt", "Black Cotton"]
         
-        for i in range(1, 151): # Increased to 150 fields to cover all states
-            state_name, base_lat, base_lng = STATE_CENTERS[int(_rng.integers(0, len(STATE_CENTERS)))]
-            fields.append({
-                "field_id": f"IND-{state_name[:3].upper()}-{1000+i}",
-                "crop": crops[int(_rng.integers(0, len(crops)))],
-                "stage": stages[int(_rng.integers(0, len(stages)))],
-                "vci": int(_rng.integers(10, 95 + 1)),
-                "rainfall_mm": int(_rng.integers(0, 30 + 1)),
-                "lat": base_lat + float(_rng.uniform(-1.5, 1.5)),
-                "lng": base_lng + float(_rng.uniform(-1.5, 1.5)),
-                "soil_type": soils[int(_rng.integers(0, len(soils)))]
-            })
+        num_fields = 150
+        if lat is not None and lng is not None:
+            # Generate local fields around the requested lat/lng
+            for i in range(1, num_fields + 1):
+                fields.append({
+                    "field_id": f"LOC-{1000+i}",
+                    "crop": crops[int(_rng.integers(0, len(crops)))],
+                    "stage": stages[int(_rng.integers(0, len(stages)))],
+                    "vci": int(_rng.integers(10, 95 + 1)),
+                    "rainfall_mm": int(_rng.integers(0, 30 + 1)),
+                    "lat": lat + float(_rng.uniform(-0.15, 0.15)),
+                    "lng": lng + float(_rng.uniform(-0.15, 0.15)),
+                    "soil": soils[int(_rng.integers(0, len(soils)))]
+                })
+        else:
+            # Simulate fields across all major Indian states
+            STATE_CENTERS = [
+                ("Punjab", 30.9, 75.8), ("UP", 26.8, 80.9), ("MP", 23.2, 77.4),
+                ("Maharashtra", 19.1, 73.0), ("Karnataka", 15.3, 75.7),
+                ("Tamil Nadu", 11.0, 78.0), ("West Bengal", 22.9, 88.4),
+                ("Gujarat", 23.0, 72.0), ("Andhra Pradesh", 16.5, 80.6),
+                ("Rajasthan", 26.9, 73.8), ("Bihar", 25.6, 85.1)
+            ]
+            for i in range(1, num_fields + 1):
+                state_name, base_lat, base_lng = STATE_CENTERS[int(_rng.integers(0, len(STATE_CENTERS)))]
+                fields.append({
+                    "field_id": f"IND-{state_name[:3].upper()}-{1000+i}",
+                    "crop": crops[int(_rng.integers(0, len(crops)))],
+                    "stage": stages[int(_rng.integers(0, len(stages)))],
+                    "vci": int(_rng.integers(10, 95 + 1)),
+                    "rainfall_mm": int(_rng.integers(0, 30 + 1)),
+                    "lat": base_lat + float(_rng.uniform(-1.5, 1.5)),
+                    "lng": base_lng + float(_rng.uniform(-1.5, 1.5)),
+                    "soil": soils[int(_rng.integers(0, len(soils)))]
+                })
 
     PRIORITY_ORDER = {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3, "NONE": 4}
     advisories = []

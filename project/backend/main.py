@@ -10,6 +10,11 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
+from prometheus_fastapi_instrumentator import Instrumentator
+from fastapi_cache import FastAPICache
+from fastapi_cache.backends.inmemory import InMemoryBackend
+from fastapi_cache.backends.redis import RedisBackend
+from redis import asyncio as aioredis
 
 _log = logging.getLogger(__name__)
 
@@ -24,6 +29,11 @@ for path in (REPO_ROOT, PROJECT_DIR):
 
 GEE_PROJECT = os.getenv("GEE_PROJECT", "pragati-hackathon")
 gee_ready = False
+
+# Initialize Database
+from backend.database import engine
+from backend.models import user
+user.Base.metadata.create_all(bind=engine)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -65,6 +75,17 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         gee_ready = False
         _log.warning("GEE not initialized (run 'earthengine authenticate'): %s", e)
+
+    # Initialize FastAPICache
+    redis_url = os.getenv("REDIS_URL")
+    if redis_url:
+        redis = aioredis.from_url(redis_url)
+        FastAPICache.init(RedisBackend(redis), prefix="fastapi-cache")
+        _log.info("FastAPICache initialized (RedisBackend)")
+    else:
+        FastAPICache.init(InMemoryBackend(), prefix="fastapi-cache")
+        _log.info("FastAPICache initialized (InMemoryBackend)")
+
     yield
 
 # ── FastAPI App ─────────────────────────────────
@@ -80,22 +101,28 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[_origins, "http://localhost:3000", "http://127.0.0.1:5173"],
     allow_credentials=True,
-    allow_methods=["GET", "POST"],
-    allow_headers=["Content-Type", "Authorization"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["*"],
 )
+
+# Instrument FastAPI with Prometheus
+Instrumentator().instrument(app).expose(app)
+
 
 # ── Routers ──────────────────────────────────────
 try:
-    from backend.api import advisory, crop, stress, analytics, tiles
+    from backend.api import advisory, crop, stress, analytics, tiles, auth
 except ImportError as e:
     _log.warning("Falling back to project backend router imports: %s", e)
-    from project.backend.api import advisory, crop, stress, analytics, tiles
+    from project.backend.api import advisory, crop, stress, analytics, tiles, auth
 
+app.include_router(auth.router,      prefix="/api/auth", tags=["Authentication"])
 app.include_router(crop.router,      prefix="/api", tags=["Crop Classification"])
 app.include_router(stress.router,    prefix="/api", tags=["Moisture Stress"])
 app.include_router(advisory.router,  prefix="/api", tags=["Irrigation Advisory"])
 app.include_router(analytics.router, prefix="/api", tags=["Analytics"])
 app.include_router(tiles.router,     prefix="/api", tags=["Map Tiles"])
+
 
 @app.get("/")
 def root():

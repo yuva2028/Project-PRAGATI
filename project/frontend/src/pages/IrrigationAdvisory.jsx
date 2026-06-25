@@ -42,9 +42,11 @@ export default function IrrigationAdvisory({ userCoords }) {
   const { map, mapsApi } = useGoogleMap(mapRef, { center, zoom: 7 })
 
   useEffect(() => {
+    setLoading(true)
+    const params = userCoords ? `?lat=${userCoords.lat}&lng=${userCoords.lng}` : ''
     Promise.all([
-      axios.get(`${API}/api/advisory`),
-      axios.get(`${API}/api/advisory/command-summary`).catch(() => null)
+      axios.get(`${API}/api/advisory${params}`),
+      axios.get(`${API}/api/advisory/command-summary${params}`).catch(() => null)
     ])
     .then(([advRes, cmdRes]) => {
       setData(advRes.data)
@@ -52,7 +54,14 @@ export default function IrrigationAdvisory({ userCoords }) {
       setLoading(false)
     })
     .catch(e => { setError(e.message); setLoading(false) })
-  }, [])
+  }, [userCoords])
+
+  // Pan map when userCoords change
+  useEffect(() => {
+    if (map && userCoords) {
+      map.panTo(userCoords);
+    }
+  }, [map, userCoords])
 
   const advisories = data?.advisories || []
   const filtered = filter === 'ALL' ? advisories : advisories.filter(a => a.priority === filter)
@@ -115,7 +124,9 @@ export default function IrrigationAdvisory({ userCoords }) {
             <div class="gmap-info-row"><span>Stress</span><span>${a.stress_level}</span></div>
             <div class="gmap-info-row"><span>VCI</span><span>${a.vci}</span></div>
             <div class="gmap-info-row"><span>Water needed</span><span>${a.water_to_apply_mm} mm</span></div>
+            <div class="gmap-info-row"><span>Confidence</span><span style="color:${a.confidence_score > 90 ? '#10b981' : '#f59e0b'}">${a.confidence_score}%</span></div>
             <div style="margin-top:6px; font-weight:600; color:${a.advisory_color}">${a.recommendation}</div>
+            <div style="margin-top:4px; font-size:10px; color:#94a3b8; font-style:italic;">${a.explanation || ''}</div>
           </div>
         `)
         infoRef.current.setPosition({ lat: a.lat, lng: a.lng })
@@ -353,7 +364,9 @@ export default function IrrigationAdvisory({ userCoords }) {
                     <th scope="col">ETc (mm)</th>
                     <th scope="col">Deficit (mm)</th>
                     <th scope="col">Apply (mm)</th>
+                    <th scope="col">Confidence</th>
                     <th scope="col">Action</th>
+                    <th scope="col">XAI Explanation</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -374,8 +387,18 @@ export default function IrrigationAdvisory({ userCoords }) {
                         {a.water_to_apply_mm}
                       </td>
                       <td>
-                        <div style={{ fontSize:11, color: a.advisory_color, fontWeight:500, maxWidth:160 }}>
+                        <span className={`badge ${a.confidence_score > 90 ? 'badge-ok' : 'badge-medium'}`}>
+                          {a.confidence_score}%
+                        </span>
+                      </td>
+                      <td>
+                        <div style={{ fontSize:11, color: a.advisory_color, fontWeight:500, maxWidth:100 }}>
                           {a.urgency === 'NONE' ? '✅ No action' : `⏱ ${a.within_days}d`}
+                        </div>
+                      </td>
+                      <td>
+                        <div style={{ fontSize:11, color:'var(--navy-300)', maxWidth:200, fontStyle:'italic' }}>
+                          {a.explanation || 'No explanation available'}
                         </div>
                       </td>
                     </tr>

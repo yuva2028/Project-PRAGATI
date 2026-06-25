@@ -88,14 +88,12 @@ export default function Home({ userCoords }) {
 
 
   useEffect(() => {
-
-    axios.get(`${API}/api/advisory/summary`)
-
+    setLoading(true)
+    const params = userCoords ? `?lat=${userCoords.lat}&lng=${userCoords.lng}` : ''
+    axios.get(`${API}/api/advisory/summary${params}`)
       .then(r => { setSummary(r.data); setLoading(false) })
-
       .catch(e => { setError(e.message); setLoading(false) })
-
-  }, [])
+  }, [userCoords])
 
 
 

@@ -19,7 +19,8 @@ import { useEffect, useRef, useState } from 'react'
 
 
 
-const GOOGLE_MAPS_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || ''
+const rawKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || ''
+const GOOGLE_MAPS_KEY = (rawKey === 'your_google_maps_api_key_here' || !rawKey) ? '' : rawKey
 
 
 
@@ -37,7 +38,7 @@ function loadGoogleMapsScript() {
 
     const script = document.createElement('script')
 
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_KEY}&libraries=marker,visualization&v=weekly`
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_KEY}&libraries=marker,visualization,places&v=weekly`
 
     script.async = true
 

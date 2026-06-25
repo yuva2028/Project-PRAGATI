@@ -12,6 +12,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 from fastapi import APIRouter, HTTPException
+from fastapi_cache.decorator import cache
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +53,7 @@ INDIA_STRESS_BASELINE = {
 
 
 @router.get("/stress-map")
+@cache(expire=3600)
 async def get_stress_map():
     """Returns moisture stress distribution. Uses GEE VCI when available."""
     stress_dist = {}
@@ -88,7 +90,8 @@ async def get_stress_map():
     }
 
 @router.get("/stress-geojson")
-async def get_stress_geojson():
+@cache(expire=3600)
+async def get_stress_geojson(lat: float = None, lng: float = None):
     """
     Returns moisture stress as GeoJSON FeatureCollection for Leaflet rendering.
     Uses VCI computed per ground-truth point with synthetic but reproducible values.
@@ -105,6 +108,12 @@ async def get_stress_geojson():
     except Exception as e:
         logger.warning("ground_truth.csv not found for stress GeoJSON: %s", e)
         raise HTTPException(status_code=500, detail=f"ground_truth.csv not found: {e}")
+
+    if lat is not None and lng is not None:
+        center_lat = df['latitude'].mean()
+        center_lng = df['longitude'].mean()
+        df['latitude'] = df['latitude'] + (lat - center_lat)
+        df['longitude'] = df['longitude'] + (lng - center_lng)
 
     features = []
     crop_names = {1: "Rice", 2: "Maize", 3: "Sugarcane", 4: "Others"}
@@ -146,6 +155,7 @@ async def get_stress_geojson():
 
 
 @router.get("/phenology")
+@cache(expire=3600)
 async def get_phenology():
     """Returns NDVI time series with phenology stage annotations."""
     try:

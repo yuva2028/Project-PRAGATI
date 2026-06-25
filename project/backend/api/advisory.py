@@ -6,8 +6,9 @@ GET /api/advisory/summary
 """
 
 from fastapi import APIRouter, HTTPException
+from fastapi_cache.decorator import cache
 from pydantic import BaseModel, Field as PydField
-from typing import Literal
+from typing import Literal, Dict, Any, List
 import logging
 import time as _time
 
@@ -58,22 +59,48 @@ SAMPLE_FIELDS = [
 ]
 
 
-@router.get("/advisory")
-async def get_advisory():
+class AdvisoryItem(BaseModel):
+    field_id: str
+    crop: str
+    growth_stage: str
+    stress_level: str
+    vci: float
+    rainfall_mm: float
+    crop_water_requirement_mm: float
+    water_deficit_mm: float
+    water_to_apply_mm: float
+    urgency: str
+    recommendation: str
+    explanation: str
+    confidence_score: float
+    within_days: Any
+    priority: str
+    advisory_color: str
+    lat: float = None
+    lng: float = None
+
+class AdvisoryResponse(BaseModel):
+    status: str
+    pilot_area: str
+    total_fields: int
+    advisories: List[AdvisoryItem]
+    advisory_rules: Dict[str, Any]
+
+@router.get("/advisory", response_model=AdvisoryResponse)
+@cache(expire=300)
+async def get_advisory(lat: float = None, lng: float = None):
     """Returns field-level irrigation advisories for all registered fields."""
     try:
-        # Serve from cache when fresh
-        cached = _ADVISORY_CACHE.get("advisories")
-        if cached and (_time.time() - _ADVISORY_CACHE.get("ts", 0)) < _ADVISORY_TTL:
-            return cached
-
-        advisories = generate_bulk_advisories(SAMPLE_FIELDS)
+        fields_to_use = SAMPLE_FIELDS if (lat is None and lng is None) else []
+        advisories = generate_bulk_advisories(fields_to_use, lat, lng)
         # Add coordinates for map visualization
-        field_coords = {f["field_id"]: {"lat": f["lat"], "lng": f["lng"]} for f in SAMPLE_FIELDS}
+        field_coords = {f["field_id"]: {"lat": f.get("lat"), "lng": f.get("lng")} for f in fields_to_use}
         for a in advisories:
             coords = field_coords.get(a["field_id"], {})
-            a["lat"] = coords.get("lat")
-            a["lng"] = coords.get("lng")
+            if "lat" not in a or a["lat"] is None:
+                a["lat"] = coords.get("lat")
+            if "lng" not in a or a["lng"] is None:
+                a["lng"] = coords.get("lng")
 
         result = {
             "status": "success",
@@ -82,32 +109,31 @@ async def get_advisory():
             "advisories": advisories,
             "advisory_rules": ADVISORY_RULES
         }
-        _ADVISORY_CACHE["advisories"] = result
-        _ADVISORY_CACHE["ts"] = _time.time()
         return result
     except Exception as e:
         logger.warning("Advisory generation failed: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/advisory/summary")
-async def get_advisory_summary():
+class SummaryResponse(BaseModel):
+    status: str
+    pilot_area: str
+    total_fields: int
+    critical_alerts: int
+    high_alerts: int
+    healthy_fields: int
+    total_water_required_mm: float
+    average_vci: float
+
+@router.get("/advisory/summary", response_model=SummaryResponse)
+@cache(expire=300)
+async def get_advisory_summary(lat: float = None, lng: float = None):
     """Returns summary statistics for the home dashboard."""
     try:
-        cached_summary = _ADVISORY_CACHE.get("summary")
-        if cached_summary and (_time.time() - _ADVISORY_CACHE.get("summary_ts", 0)) < _ADVISORY_TTL:
-            return cached_summary
-
-        # Reuse cached advisories if available
-        cached = _ADVISORY_CACHE.get("advisories")
-        if cached and (_time.time() - _ADVISORY_CACHE.get("ts", 0)) < _ADVISORY_TTL:
-            advisories = cached["advisories"]
-        else:
-            advisories = generate_bulk_advisories(SAMPLE_FIELDS)
+        fields_to_use = SAMPLE_FIELDS if (lat is None and lng is None) else []
+        advisories = generate_bulk_advisories(fields_to_use, lat, lng)
         summary = get_summary_stats(advisories)
         result = {"status": "success", "pilot_area": "Karnataka, India", **summary}
-        _ADVISORY_CACHE["summary"] = result
-        _ADVISORY_CACHE["summary_ts"] = _time.time()
         return result
     except Exception as e:
         logger.warning("Advisory summary generation failed: %s", e)
@@ -123,7 +149,12 @@ class FieldInput(BaseModel):
     rainfall_mm: float = PydField(..., ge=0.0, le=2000.0)
 
 
-@router.post("/advisory/field")
+class FieldAdvisoryResponse(BaseModel):
+    status: str
+    pilot_area: str
+    advisory: AdvisoryItem
+
+@router.post("/advisory/field", response_model=FieldAdvisoryResponse)
 async def get_field_advisory(field: FieldInput):
     """Generate advisory for a single custom field."""
     try:
@@ -144,11 +175,33 @@ async def get_field_advisory(field: FieldInput):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/advisory/command-summary")
-async def get_command_summary():
+class CommandSummaryItem(BaseModel):
+    command_area: str
+    total_fields_monitored: int
+    critical_fields: int
+    high_stress_fields: int
+    moderate_stress_fields: int
+    average_vci: float
+    total_crop_demand_mm: float
+    total_rainfall_mm: float
+    total_deficit_mm: float
+    discharge_recommendation: str
+    gate_action: str
+    color: str
+    water_deficit_ratio: float
+
+class CommandSummaryResponse(BaseModel):
+    status: str
+    pilot_area: str
+    total_command_distributaries: int
+    command_areas: List[CommandSummaryItem]
+
+@router.get("/advisory/command-summary", response_model=CommandSummaryResponse)
+async def get_command_summary(lat: float = None, lng: float = None):
     """Returns aggregated command-area canal distributary water release strategies."""
     try:
-        advisories = generate_bulk_advisories(SAMPLE_FIELDS)
+        fields_to_use = SAMPLE_FIELDS if (lat is None and lng is None) else []
+        advisories = generate_bulk_advisories(fields_to_use, lat, lng)
         command_summaries = get_command_area_advisories(advisories)
         
         return {

@@ -117,7 +117,7 @@ export function useUserLocation() {
 
 
 
-  return { coords, address, loading, error, permission }
+  return { coords, setCoords, address, setAddress, loading, error, permission }
 
 }
 

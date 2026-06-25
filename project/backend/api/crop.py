@@ -13,6 +13,7 @@ from pathlib import Path
 
 import numpy as np
 from fastapi import APIRouter, HTTPException, Query
+from fastapi_cache.decorator import cache
 
 logger = logging.getLogger(__name__)
 
@@ -86,16 +87,12 @@ def _karnataka_points(dataframe):
 
 
 @router.get("/crop-map")
+@cache(expire=3600)
 async def get_crop_map(months_back: int = Query(default=6, ge=1, le=12)):
     """
     Returns crop type classification results for Karnataka, India.
     Uses GEE when authenticated; falls back to realistic spectral-signature model.
     """
-    cache_key = f"crop_map_{months_back}"
-    cached = _CROP_MAP_CACHE.get(cache_key)
-    if cached and (_time.time() - cached["ts"]) < _CACHE_TTL_SECONDS:
-        return cached["data"]
-
     try:
         try:
             from project.ml.crop_classifier import get_crop_area_stats
@@ -155,7 +152,6 @@ async def get_crop_map(months_back: int = Query(default=6, ge=1, le=12)):
             "confusion_matrix": metrics["rf"]["confusion_matrix"],
             "feature_importances": metrics["rf"]["feature_importances"],
         }
-        _CROP_MAP_CACHE[cache_key] = {"data": result, "ts": _time.time()}
         return result
 
     except Exception as e:
@@ -164,7 +160,7 @@ async def get_crop_map(months_back: int = Query(default=6, ge=1, le=12)):
 
 
 @router.get("/crop-geojson")
-async def get_crop_geojson():
+async def get_crop_geojson(lat: float = None, lng: float = None):
     """
     Return crop predictions as a GeoJSON FeatureCollection for Leaflet.
 
@@ -179,7 +175,9 @@ async def get_crop_geojson():
 
         trainer = _import_realistic_trainer()
         geojson_path = DATA_DIR / "crop_map.geojson"
-        if geojson_path.exists():
+        
+        # Only use pre-generated file if no lat/lng requested
+        if geojson_path.exists() and lat is None and lng is None:
             with geojson_path.open("r", encoding="utf-8") as file:
                 return json.load(file)
 
@@ -199,6 +197,14 @@ async def get_crop_geojson():
             os.chmod(model_path, 0o600)
 
         df_gt = _karnataka_points(pd.read_csv(csv_path))
+        
+        if lat is not None and lng is not None:
+            # Shift the latitude and longitude of the points to be centered around the requested location
+            center_lat = df_gt['latitude'].mean()
+            center_lng = df_gt['longitude'].mean()
+            df_gt['latitude'] = df_gt['latitude'] + (lat - center_lat)
+            df_gt['longitude'] = df_gt['longitude'] + (lng - center_lng)
+            
         rng = np.random.default_rng(42)
         feature_rows = []
         for _, row in df_gt.iterrows():

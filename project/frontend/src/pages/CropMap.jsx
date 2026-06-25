@@ -64,17 +64,13 @@ export default function CropMap({ userCoords }) {
 
 
   // Fetch data
-
   useEffect(() => {
-
+    setLoading(true)
+    const params = userCoords ? `?lat=${userCoords.lat}&lng=${userCoords.lng}` : ''
     Promise.all([
-
       axios.get(`${API}/api/crop-stats`),
-
       axios.get(`${API}/api/crop-map`).catch(() => null),
-
-      axios.get(`${API}/api/crop-geojson`).catch(() => null),
-
+      axios.get(`${API}/api/crop-geojson${params}`).catch(() => null),
     ]).then(([statsRes, cropMapRes, geoRes]) => {
 
       setCropData(statsRes.data)
@@ -92,8 +88,14 @@ export default function CropMap({ userCoords }) {
       setLoading(false)
 
     }).catch(e => { setError(e.message); setLoading(false) })
+  }, [activeBand, userCoords])
 
-  }, [activeBand])
+  // Pan map when userCoords change
+  useEffect(() => {
+    if (map && userCoords) {
+      map.panTo(userCoords);
+    }
+  }, [map, userCoords])
 
 
 
@@ -285,8 +287,9 @@ export default function CropMap({ userCoords }) {
 
       {error   && <div className="error-card" role="alert">API Error: {error}</div>}
 
-      <>
-        {/* KPI strip */}
+      {!error && (
+        <>
+          {/* KPI strip */}
         <div className="kpi-grid">
           {displayCrops.map((c, i) => (
             <div key={c.name} className="kpi-card fade-up" style={{ animationDelay: `${i * 0.06}s` }}>

@@ -1,7 +1,10 @@
-
-import { BrowserRouter, Routes, Route, NavLink } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, NavLink, Navigate } from 'react-router-dom'
+import { useAuth } from './hooks/useAuth'
+import Login from './pages/Login.jsx'
+import { useTranslation } from 'react-i18next'
 
 import { useUserLocation } from './hooks/useUserLocation.js'
+import LocationSearch from './components/LocationSearch.jsx'
 
 import Home from './pages/Home.jsx'
 
@@ -31,17 +34,30 @@ const NAV = [
 
 
 
+const ProtectedRoute = ({ children }) => {
+  const { user, loading } = useAuth()
+  if (loading) return <div style={{padding: '2rem'}}>Loading...</div>
+  if (!user) return <Navigate to="/login" />
+  return children
+}
+
 export default function App() {
 
-  const { coords, address, permission } = useUserLocation()
+  const { coords, setCoords, address, setAddress, permission } = useUserLocation()
+  const { user, logout } = useAuth()
+  const { t, i18n } = useTranslation()
 
-
+  const toggleLanguage = () => {
+    i18n.changeLanguage(i18n.language === 'en' ? 'hi' : 'en')
+  }
 
   return (
-
     <BrowserRouter>
-
-      <div className="app-layout">
+      <Routes>
+        <Route path="/login" element={<Login />} />
+        <Route path="/*" element={
+          <ProtectedRoute>
+            <div className="app-layout">
 
         <a href="#main-content" className="skip-link">Skip to main content</a>
 
@@ -71,6 +87,13 @@ export default function App() {
 
           <nav className="sidebar-nav" aria-label="Main navigation">
 
+            <LocationSearch 
+              onLocationSelect={(lat, lng, newAddress) => {
+                setCoords({ lat, lng });
+                setAddress(newAddress);
+              }} 
+            />
+
             <div className="nav-section">Platform</div>
 
             {NAV.map(item => (
@@ -88,9 +111,7 @@ export default function App() {
               >
 
                 <span className="nav-icon" aria-hidden="true">{item.icon}</span>
-
-                {item.label}
-
+                {t(item.label)}
               </NavLink>
 
             ))}
@@ -100,6 +121,16 @@ export default function App() {
 
 
           <div className="sidebar-footer">
+            
+            <div style={{marginBottom: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
+              <span style={{fontSize: '0.875rem', color: 'var(--text-muted)'}}>{user?.username}</span>
+              <div>
+                <button onClick={toggleLanguage} style={{background: 'none', border: '1px solid var(--border-color)', color: 'var(--text-main)', padding: '0.25rem 0.5rem', borderRadius: '4px', cursor: 'pointer', fontSize: '0.75rem', marginRight: '0.5rem'}}>
+                  {i18n.language === 'en' ? 'HI' : 'EN'}
+                </button>
+                <button onClick={logout} style={{background: 'none', border: '1px solid var(--border-color)', color: 'var(--text-main)', padding: '0.25rem 0.5rem', borderRadius: '4px', cursor: 'pointer', fontSize: '0.75rem'}}>{t('Logout')}</button>
+              </div>
+            </div>
 
             <div className="location-pill" aria-label="Your detected location">
 
@@ -154,9 +185,10 @@ export default function App() {
           </Routes>
 
         </main>
-
       </div>
-
+    </ProtectedRoute>
+    } />
+    </Routes>
     </BrowserRouter>
 
   )
