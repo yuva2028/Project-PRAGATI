@@ -11,11 +11,11 @@ import pandas as pd
 from sklearn.preprocessing import LabelEncoder
 
 try:
-    from .evaluate import compute_metrics
-    from .feature_engineering import validate_feature_dataframe
-    from .load_data import load_or_create_training_dataframe
-    from .train_rf import create_random_forest_pipeline
-    from .utils import (
+    from project.ml.crop.evaluate import compute_metrics
+    from project.ml.crop.feature_engineering import validate_feature_dataframe
+    from project.ml.crop.load_data import load_or_create_training_dataframe
+    from project.ml.crop.train_rf import create_random_forest_pipeline
+    from project.ml.crop.utils import (
         ensure_project_directories,
         get_path,
         get_random_seed,
@@ -27,23 +27,43 @@ try:
         stratified_train_test_split,
         timestamp_utc,
     )
-except ImportError:  # pragma: no cover - supports direct script execution.
-    from evaluate import compute_metrics
-    from feature_engineering import validate_feature_dataframe
-    from load_data import load_or_create_training_dataframe
-    from train_rf import create_random_forest_pipeline
-    from utils import (
-        ensure_project_directories,
-        get_path,
-        get_random_seed,
-        load_config,
-        normalize_class_mapping,
-        save_model_bundle,
-        set_random_seed,
-        setup_logging,
-        stratified_train_test_split,
-        timestamp_utc,
-    )
+except ImportError as e:  # pragma: no cover - supports local package execution.
+    print(f"[WARN] Falling back to relative crop imports in train_xgb: {e}")
+    try:
+        from .evaluate import compute_metrics
+        from .feature_engineering import validate_feature_dataframe
+        from .load_data import load_or_create_training_dataframe
+        from .train_rf import create_random_forest_pipeline
+        from .utils import (
+            ensure_project_directories,
+            get_path,
+            get_random_seed,
+            load_config,
+            normalize_class_mapping,
+            save_model_bundle,
+            set_random_seed,
+            setup_logging,
+            stratified_train_test_split,
+            timestamp_utc,
+        )
+    except ImportError as fallback_error:  # pragma: no cover - supports direct script execution.
+        print(f"[WARN] Falling back to script-local crop imports in train_xgb: {fallback_error}")
+        from evaluate import compute_metrics
+        from feature_engineering import validate_feature_dataframe
+        from load_data import load_or_create_training_dataframe
+        from train_rf import create_random_forest_pipeline
+        from utils import (
+            ensure_project_directories,
+            get_path,
+            get_random_seed,
+            load_config,
+            normalize_class_mapping,
+            save_model_bundle,
+            set_random_seed,
+            setup_logging,
+            stratified_train_test_split,
+            timestamp_utc,
+        )
 
 
 def train_xgboost(config_path: str | Path | None = None) -> pd.DataFrame:
@@ -170,4 +190,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

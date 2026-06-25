@@ -17,6 +17,7 @@ export default function App() {
   return (
     <BrowserRouter>
       <div className="app-layout">
+        <a href="#main-content" className="skip-link">Skip to main content</a>
 
         {/* ── Sidebar ─────────────────────────── */}
         <aside className="sidebar">
@@ -48,8 +49,8 @@ export default function App() {
           <div className="sidebar-pilot">
             <div className="pilot-badge">
               <span>📍 Pilot Area</span>
-              <strong>India</strong>
-              <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
+              <strong>Karnataka, India</strong>
+              <span className="pilot-meta">
                 Sentinel-1/2 | GEE
               </span>
             </div>
@@ -57,7 +58,7 @@ export default function App() {
         </aside>
 
         {/* ── Main Content ─────────────────────── */}
-        <main className="main-content">
+        <main id="main-content" className="main-content">
           <Routes>
             <Route path="/"          element={<Home />} />
             <Route path="/crop-map"  element={<CropMap />} />

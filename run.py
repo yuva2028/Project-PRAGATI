@@ -1,4 +1,4 @@
-"""Run Project PRAGATI FastAPI backend from repo root."""
+"""Start the PRAGATI FastAPI backend from the repo root."""
 import uvicorn
 
 if __name__ == "__main__":

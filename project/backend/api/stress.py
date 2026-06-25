@@ -11,7 +11,8 @@ from fastapi import APIRouter, HTTPException
 
 try:
     from project.backend.utils.ndvi_series import generate_synthetic_ndvi_series, get_phenology_metrics
-except ImportError:
+except ImportError as e:
+    print(f"[WARN] Falling back to backend NDVI utility import: {e}")
     from backend.utils.ndvi_series import generate_synthetic_ndvi_series, get_phenology_metrics
 
 router = APIRouter()
@@ -51,13 +52,17 @@ async def get_stress_map():
     source = "VCI Model | NRSC India Drought Monitor Baseline"
 
     try:
-        from ml.moisture_model import get_stress_stats
+        try:
+            from project.ml.moisture_model import get_stress_stats
+        except ImportError as e:
+            print(f"[WARN] Falling back to local moisture_model import: {e}")
+            from ml.moisture_model import get_stress_stats
         stats = get_stress_stats()
         if stats:
             stress_dist = stats
             source = "GEE VCI (Sentinel-2 Live)"
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"[WARN] Live stress stats unavailable: {e}")
 
     if not stress_dist:
         stress_dist = INDIA_STRESS_BASELINE
@@ -65,7 +70,7 @@ async def get_stress_map():
 
     return {
         "status": "success",
-        "pilot_area": "India",
+        "pilot_area": "Karnataka, India",
         "source": source,
         "index_used": "Deep Learning LSTM (Moisture Stress)",
         "formula": "LSTM(NDVI_seq, NDWI_seq, Precip_seq)",
@@ -81,7 +86,11 @@ async def get_stress_map():
 async def get_stress_tile():
     """Returns GEE tile URL for VCI stress map. Falls back gracefully when GEE unavailable."""
     try:
-        from ml.moisture_model import get_vci_tile_url
+        try:
+            from project.ml.moisture_model import get_vci_tile_url
+        except ImportError as e:
+            print(f"[WARN] Falling back to local VCI tile import: {e}")
+            from ml.moisture_model import get_vci_tile_url
         try:
             tile_url = get_vci_tile_url()
             return {
@@ -91,9 +100,9 @@ async def get_stress_tile():
                 "palette": ["#dc2626", "#f97316", "#eab308", "#84cc16", "#22c55e"],
             }
         except Exception as gee_err:
-            print(f"GEE tile error (non-fatal): {gee_err}")
-    except Exception:
-        pass
+            print(f"[WARN] GEE stress tile error: {gee_err}")
+    except Exception as e:
+        print(f"[WARN] Stress tile fallback activated: {e}")
 
     # Non-error fallback with informative response
     return {
@@ -110,27 +119,32 @@ async def get_stress_geojson():
     Returns moisture stress as GeoJSON FeatureCollection for Leaflet rendering.
     Uses VCI computed per ground-truth point with synthetic but reproducible values.
     """
-    from pathlib import Path
     import pandas as pd
     import numpy as np
-    from ml.moisture_model import compute_pixel_stress
+    from pathlib import Path
+    try:
+        from project.ml.moisture_model import compute_pixel_stress
+    except ImportError as e:
+        print(f"[WARN] Falling back to local compute_pixel_stress import: {e}")
+        from ml.moisture_model import compute_pixel_stress
 
     csv_path = Path(__file__).parent.parent.parent / "data" / "ground_truth.csv"
     try:
         df = pd.read_csv(csv_path)
-    except Exception:
-        raise HTTPException(status_code=500, detail="ground_truth.csv not found")
+    except Exception as e:
+        print(f"[WARN] ground_truth.csv not found for stress GeoJSON: {e}")
+        raise HTTPException(status_code=500, detail=f"ground_truth.csv not found: {e}")
 
-    rng = np.random.default_rng(99)
     features = []
     crop_names = {1: "Rice", 2: "Maize", 3: "Sugarcane", 4: "Others"}
     for i, row in df.iterrows():
-        ndvi_current = float(rng.uniform(0.15, 0.80))
-        ndvi_min     = max(0.05, ndvi_current - float(rng.uniform(0.05, 0.25)))
-        ndvi_max     = min(0.90, ndvi_current + float(rng.uniform(0.05, 0.25)))
-        ndwi         = float(ndvi_current - rng.uniform(0.3, 0.5))
-        vv           = float(rng.uniform(-18, -10))
-        vh           = float(rng.uniform(-24, -14))
+        rng_i = np.random.default_rng(99 + i)
+        ndvi_current = float(rng_i.uniform(0.15, 0.80))
+        ndvi_min     = max(0.05, ndvi_current - float(rng_i.uniform(0.05, 0.25)))
+        ndvi_max     = min(0.90, ndvi_current + float(rng_i.uniform(0.05, 0.25)))
+        ndwi         = float(ndvi_current - rng_i.uniform(0.30, 0.50))
+        vv           = float(rng_i.uniform(-18.0, -10.0))
+        vh           = float(rng_i.uniform(-24.0, -14.0))
         stress       = compute_pixel_stress(ndvi_current, ndvi_min, ndvi_max, ndwi, vv, vh)
         crop_name    = crop_names.get(int(row.get("crop_class", 4)), "Others")
 
@@ -149,6 +163,7 @@ async def get_stress_geojson():
                 "phenology_stage": stress["phenology_stage"],
                 "crop_name":       crop_name,
                 "ndvi":            round(ndvi_current, 3),
+                "field_id":        f"KAR-{i + 1:03d}",
             }
         })
 
@@ -163,7 +178,11 @@ async def get_stress_geojson():
 async def get_phenology():
     """Returns NDVI time series with phenology stage annotations."""
     try:
-        from ml.moisture_model import get_ndvi_time_series_for_stress
+        try:
+            from project.ml.moisture_model import get_ndvi_time_series_for_stress
+        except ImportError as e:
+            print(f"[WARN] Falling back to local phenology import: {e}")
+            from ml.moisture_model import get_ndvi_time_series_for_stress
         res = get_ndvi_time_series_for_stress()
         if res.get("time_series"):
             return {
@@ -176,8 +195,8 @@ async def get_phenology():
                     for s, i in PHENOLOGY_STAGES.items()
                 },
             }
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"[WARN] Live phenology unavailable: {e}")
 
     # Use the shared NDVI utility to avoid code duplication
     series = generate_synthetic_ndvi_series()
@@ -185,7 +204,7 @@ async def get_phenology():
 
     return {
         "status": "success",
-        "source": "Sentinel-2 | India Kharif Season Model",
+        "source": "Sentinel-2 | Karnataka Kharif Season Model",
         "data": series,
         "phenology_metrics": metrics,
         "stages": {

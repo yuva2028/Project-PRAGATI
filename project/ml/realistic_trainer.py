@@ -13,10 +13,10 @@ Key differences from the naive spectral profile approach:
 - Result: ~88-93% RF accuracy — credible for a remote sensing competition
 """
 
-import os
 import numpy as np
 import pandas as pd
 import joblib
+from pathlib import Path
 from sklearn.ensemble import RandomForestClassifier
 from xgboost import XGBClassifier
 from sklearn.model_selection import train_test_split, StratifiedKFold, cross_val_score
@@ -143,7 +143,7 @@ SPECTRAL_PROFILES = {
 
 
 def generate_realistic_features(
-    csv_path: str,
+    csv_path: str | Path,
     samples_per_point: int = 12,
     seed: int = 42,
 ) -> pd.DataFrame:
@@ -360,10 +360,11 @@ def get_crop_area_stats(predictions: list) -> dict:
 if __name__ == "__main__":
     import json
 
-    CSV_PATH = os.path.join(os.path.dirname(__file__), "..", "data", "ground_truth.csv")
-    RF_MODEL_PATH = os.path.join(os.path.dirname(__file__), "..", "backend", "models", "crop_rf_model.joblib")
-    XGB_MODEL_PATH = os.path.join(os.path.dirname(__file__), "..", "backend", "models", "crop_xgb_model.joblib")
-    METRICS_JSON_PATH = os.path.join(os.path.dirname(__file__), "..", "backend", "models", "crop_metrics.json")
+    PROJECT_DIR = Path(__file__).resolve().parent.parent
+    CSV_PATH = PROJECT_DIR / "data" / "ground_truth.csv"
+    RF_MODEL_PATH = PROJECT_DIR / "backend" / "models" / "crop_rf_model.joblib"
+    XGB_MODEL_PATH = PROJECT_DIR / "backend" / "models" / "crop_xgb_model.joblib"
+    METRICS_JSON_PATH = PROJECT_DIR / "backend" / "models" / "crop_metrics.json"
 
     print("Generating realistic training features...")
     df = generate_realistic_features(CSV_PATH, samples_per_point=12)
@@ -379,11 +380,11 @@ if __name__ == "__main__":
     print(f"\nXGBoost 5-Fold CV Accuracy      : {metrics['xgb']['accuracy']:.2f}% +/- {metrics['xgb']['accuracy_std']:.2f}%")
     print(f"XGBoost Kappa                   : {metrics['xgb']['kappa_coefficient']:.4f}")
 
-    os.makedirs(os.path.dirname(RF_MODEL_PATH), exist_ok=True)
+    RF_MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
     joblib.dump(clf_rf, RF_MODEL_PATH)
     joblib.dump(clf_xgb, XGB_MODEL_PATH)
     
-    with open(METRICS_JSON_PATH, "w") as f:
+    with METRICS_JSON_PATH.open("w", encoding="utf-8") as f:
         json.dump(metrics, f, indent=2)
 
     print(f"\nSaved Random Forest model to: {RF_MODEL_PATH}")

@@ -12,11 +12,17 @@ import rasterio
 from rasterio.transform import Affine
 
 try:
-    from .feature_engineering import build_feature_stack, flatten_feature_stack
-    from .utils import get_path
-except ImportError:  # pragma: no cover - supports direct script execution.
-    from feature_engineering import build_feature_stack, flatten_feature_stack
-    from utils import get_path
+    from project.ml.crop.feature_engineering import build_feature_stack, flatten_feature_stack
+    from project.ml.crop.utils import get_path
+except ImportError as e:  # pragma: no cover - supports local package execution.
+    print(f"[WARN] Falling back to relative crop imports in load_data: {e}")
+    try:
+        from .feature_engineering import build_feature_stack, flatten_feature_stack
+        from .utils import get_path
+    except ImportError as fallback_error:  # pragma: no cover - supports direct script execution.
+        print(f"[WARN] Falling back to script-local crop imports in load_data: {fallback_error}")
+        from feature_engineering import build_feature_stack, flatten_feature_stack
+        from utils import get_path
 
 
 Array2D = np.ndarray

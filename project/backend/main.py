@@ -31,14 +31,15 @@ async def lifespan(app: FastAPI):
         import ee
         service_account = os.getenv("GEE_SERVICE_ACCOUNT", "")
         key_file = os.getenv("GEE_KEY_FILE", "")
-        from pathlib import Path as _Path
-        key_path = _Path(key_file).resolve() if key_file else None
+        from pathlib import Path as _P
+
+        key_path = _P(key_file).resolve() if key_file else _P(".")
 
         if (
-            service_account and key_path
+            service_account and key_file
             and key_path.exists()
             and key_path.suffix == ".json"
-            and str(key_path).startswith(str(_Path.cwd()))
+            and str(key_path).startswith(str(_P.cwd()))
         ):
             credentials = ee.ServiceAccountCredentials(
                 email=service_account,
@@ -74,10 +75,10 @@ app.add_middleware(
 
 # ── Routers ──────────────────────────────────────
 try:
-    from project.backend.api import advisory, crop, stress, analytics, tiles
-except ImportError as e:
-    print(f"[WARN] Falling back to backend router imports: {e}")
     from backend.api import advisory, crop, stress, analytics, tiles
+except ImportError as e:
+    print(f"[WARN] Falling back to project backend router imports: {e}")
+    from project.backend.api import advisory, crop, stress, analytics, tiles
 
 app.include_router(crop.router,      prefix="/api", tags=["Crop Classification"])
 app.include_router(stress.router,    prefix="/api", tags=["Moisture Stress"])
@@ -90,7 +91,7 @@ def root():
     return {
         "project": "PRAGATI",
         "description": "AI-Driven Agriculture Monitoring System",
-        "pilot_area": "Karnataka State, India",
+        "pilot_area": "Karnataka, India",
         "status": "running",
         "gee_authenticated": gee_ready,
         "docs": "/docs"

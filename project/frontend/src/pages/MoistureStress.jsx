@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { MapContainer, TileLayer } from 'react-leaflet'
+import { MapContainer, TileLayer, CircleMarker, Popup } from 'react-leaflet'
 import { Doughnut } from 'react-chartjs-2'
 import { Chart as ChartJS, ArcElement, Tooltip, Legend } from 'chart.js'
 import axios from 'axios'
@@ -7,7 +7,7 @@ import axios from 'axios'
 ChartJS.register(ArcElement, Tooltip, Legend)
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:8000'
-const INDIA = [22.0, 82.0]
+const KARNATAKA = [15.3, 75.7]
 
 const STRESS_CONFIG = {
   'Severe Stress':   { color: '#dc2626', badge: 'badge-critical' },
@@ -17,23 +17,34 @@ const STRESS_CONFIG = {
   'Healthy':         { color: '#22c55e', badge: 'badge-none' },
 }
 
+const STRESS_ICONS = {
+  'Severe Stress': 'S',
+  'High Stress': 'H',
+  'Moderate Stress': 'M',
+  'Low Stress': 'L',
+  'Healthy': 'OK',
+}
+
 export default function MoistureStress() {
   const [stressData, setStressData] = useState(null)
   const [tileUrl,    setTileUrl]    = useState(null)
   const [phenology,  setPhenology]  = useState([])
   const [loading,    setLoading]    = useState(true)
   const [error,      setError]      = useState(null)
+  const [stressPoints, setStressPoints] = useState([])
 
   useEffect(() => {
     Promise.all([
       axios.get(`${API}/api/stress-map`),
       axios.get(`${API}/api/tiles/stress`),
       axios.get(`${API}/api/phenology`),
+      axios.get(`${API}/api/stress-geojson`).catch(() => null),
     ])
-    .then(([stressRes, tileRes, phenoRes]) => {
+    .then(([stressRes, tileRes, phenoRes, sgRes]) => {
       setStressData(stressRes.data)
       setTileUrl(tileRes.data.tile_url)
       setPhenology(phenoRes.data.data || [])
+      if (sgRes?.data?.features) setStressPoints(sgRes.data.features)
       setLoading(false)
     })
     .catch(e => { setError(e.message); setLoading(false) })
@@ -67,7 +78,7 @@ export default function MoistureStress() {
       <div className="page-header">
         <div className="header-badge"><span className="live-dot" /> Sentinel-2 + Sentinel-1</div>
         <h2>💧 Moisture Stress Detection</h2>
-        <p>VCI from NDVI anomalies · Phenology-aware classification · India</p>
+        <p>VCI from NDVI anomalies · Phenology-aware classification · Karnataka</p>
       </div>
 
       {loading && <div className="loading-container"><div className="spinner" /><p className="loading-text">Computing VCI from Sentinel-2 time series...</p></div>}
@@ -114,10 +125,34 @@ export default function MoistureStress() {
               </div>
               <div className="card-body">
                 <div className="map-wrapper">
-                  <MapContainer center={INDIA} zoom={5} style={{ height:'100%', width:'100%' }}>
-                    <TileLayer url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png" attribution="CartoDB" />
-                    {tileUrl && <TileLayer url={tileUrl} opacity={0.85} attribution="GEE | Sentinel-2" />}
-                  </MapContainer>
+                  <div role="region" aria-label="Karnataka moisture stress satellite map">
+                    <MapContainer center={KARNATAKA} zoom={7} style={{ height:'100%', width:'100%' }}>
+                      <TileLayer url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png" attribution="CartoDB" />
+                      {tileUrl && <TileLayer url={tileUrl} opacity={0.85} attribution="GEE | Sentinel-2" />}
+                      {stressPoints.map((f, i) => (
+                        <CircleMarker
+                          key={i}
+                          center={[f.geometry.coordinates[1], f.geometry.coordinates[0]]}
+                          radius={8}
+                          pathOptions={{
+                            color: f.properties.stress_color,
+                            fillColor: f.properties.stress_color,
+                            fillOpacity: 0.85,
+                            weight: 1.5
+                          }}
+                        >
+                          <Popup>
+                            <div>
+                              <strong>{f.properties.stress_label}</strong>
+                              <div>Crop: {f.properties.crop_name}</div>
+                              <div>VCI: {f.properties.vci}</div>
+                              <div>Stage: {f.properties.phenology_stage}</div>
+                            </div>
+                          </Popup>
+                        </CircleMarker>
+                      ))}
+                    </MapContainer>
+                  </div>
                 </div>
                 <div style={{ display:'flex', gap:12, marginTop:12, flexWrap:'wrap' }}>
                   {['Severe','High','Moderate','Low','Healthy'].map((l, i) => (
@@ -136,7 +171,7 @@ export default function MoistureStress() {
                 <div className="card-header"><span className="card-title">Stress Distribution</span></div>
                 <div className="card-body">
                   {Object.keys(distribution).length > 0 ? (
-                    <div style={{ height: 220 }}>
+                    <div style={{ height: 220 }} role="img" aria-label="Moisture stress distribution donut chart showing area percentages">
                       <Doughnut data={donutData} options={donutOptions} />
                     </div>
                   ) : (
@@ -180,13 +215,15 @@ export default function MoistureStress() {
                 <div className="card-header"><span className="card-title">Stress Category Breakdown</span></div>
                 <div className="card-body" style={{ padding:0 }}>
                   <table className="data-table">
+                    <caption className="sr-only">Moisture stress category breakdown by area and VCI range</caption>
                     <thead>
                       <tr>
-                        <th>Stress Category</th>
-                        <th>VCI Range</th>
-                        <th>Area (ha)</th>
-                        <th>Coverage</th>
-                        <th>Status</th>
+                        <th scope="col" aria-label="Stress icon">Icon</th>
+                        <th scope="col">Stress Category</th>
+                        <th scope="col">VCI Range</th>
+                        <th scope="col">Area (ha)</th>
+                        <th scope="col">Coverage</th>
+                        <th scope="col">Status</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -195,6 +232,7 @@ export default function MoistureStress() {
                         const conf = STRESS_CONFIG[cat.label] || {}
                         return (
                           <tr key={cat.label}>
+                            <td aria-hidden="true">{STRESS_ICONS[cat.label] || '-'}</td>
                             <td>
                               <div style={{ display:'flex', alignItems:'center', gap:8 }}>
                                 <div style={{ width:12, height:12, borderRadius:3, background:cat.color }} />

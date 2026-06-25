@@ -15,8 +15,8 @@ import yaml
 from sklearn.model_selection import train_test_split
 
 
-MODULE_ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_CONFIG_PATH = MODULE_ROOT / "config" / "config.yaml"
+MODULE_ROOT = Path(__file__).resolve().parent
+DEFAULT_CONFIG_PATH = MODULE_ROOT / "config.yaml"
 
 
 def resolve_config_path(config_path: str | Path | None = None) -> Path:
@@ -50,7 +50,7 @@ def load_config(config_path: str | Path | None = None) -> dict[str, Any]:
 
 
 def resolve_path(path_value: str | Path | None) -> Path | None:
-    """Resolve a config path relative to ``member2_crop_classification``."""
+    """Resolve a config path relative to the merged crop package."""
 
     if path_value in (None, ""):
         return None
@@ -260,4 +260,3 @@ def timestamp_utc() -> str:
     """Return the current UTC timestamp in ISO-8601 format."""
 
     return datetime.now(timezone.utc).isoformat()
-

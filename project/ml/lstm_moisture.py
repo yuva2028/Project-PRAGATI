@@ -4,7 +4,6 @@ Fetches REAL historical time-series data from Google Earth Engine,
 Trains a PyTorch LSTM model, and predicts Moisture Stress (VCI equivalent).
 """
 
-import os
 import ee
 import time
 import datetime
@@ -13,14 +12,15 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader, TensorDataset
+from pathlib import Path
 
 # Ensure weights directory exists
-WEIGHTS_DIR = os.path.join(os.path.dirname(__file__), 'weights')
-os.makedirs(WEIGHTS_DIR, exist_ok=True)
-MODEL_PATH = os.path.join(WEIGHTS_DIR, 'lstm_vci_model.pth')
+WEIGHTS_DIR = Path(__file__).resolve().parent / "weights"
+WEIGHTS_DIR.mkdir(parents=True, exist_ok=True)
+MODEL_PATH = WEIGHTS_DIR / "lstm_vci_model.pth"
 
 # In-memory model cache — avoids re-loading weights on every API call
-_CACHED_LSTM_MODEL = None
+_LSTM_MODEL_CACHE = None
 
 # ──────────────────────────────────────────
 # 1. Fetch REAL Data from Google Earth Engine
@@ -113,7 +113,7 @@ def fetch_real_gee_data(num_points=30, months_back=6):
                 print(f"  Processed {i+1}/{num_points} locations...")
                 
         except Exception as e:
-            # Skip points with errors (e.g., no data)
+            print(f"[WARN] GEE time-series point skipped: {e}")
             continue
             
     print(f"Successfully fetched {len(features)} valid time-series samples.")
@@ -160,8 +160,8 @@ def train_lstm_model():
     """Trains the LSTM model on REAL GEE data."""
     try:
         ee.Initialize()
-    except Exception:
-        print("GEE not initialized. Please run `earthengine authenticate` and `ee.Initialize()` first.")
+    except Exception as e:
+        print(f"[WARN] GEE not initialized. Please run `earthengine authenticate`: {e}")
         return
 
     # Fetch data
@@ -204,28 +204,35 @@ def train_lstm_model():
 # ──────────────────────────────────────────
 # 4. Inference / Prediction
 # ──────────────────────────────────────────
-def predict_stress_lstm(time_series):
+def predict_stress_lstm(time_series: list) -> float:
     """
-    Predicts Moisture Stress VCI using the trained LSTM model.
-    time_series: list of lists or numpy array of shape (seq_len, features)
-                 e.g., 6 months of [NDVI, NDWI, Precip]
+    Run LSTM inference on a 6-month feature sequence.
 
-    The model is cached in memory after first load to avoid repeated disk I/O.
+    Model weights are loaded from disk only once and cached in memory.
+    Args:
+        time_series: list of [ndvi, ndwi, precip] rows for consecutive months.
+    Returns:
+        float: predicted VCI score constrained to [0, 100].
     """
-    global _CACHED_LSTM_MODEL
-    if _CACHED_LSTM_MODEL is None:
-        _CACHED_LSTM_MODEL = MoistureStressLSTM()
-        if os.path.exists(MODEL_PATH):
-            _CACHED_LSTM_MODEL.load_state_dict(
-                torch.load(MODEL_PATH, weights_only=True, map_location="cpu")
-            )
-        _CACHED_LSTM_MODEL.eval()
+    global _LSTM_MODEL_CACHE
+    if _LSTM_MODEL_CACHE is None:
+        model = MoistureStressLSTM()
+        if MODEL_PATH.exists():
+            try:
+                model.load_state_dict(
+                    torch.load(MODEL_PATH, weights_only=True, map_location="cpu")
+                )
+                print(f"[OK] LSTM weights loaded from {MODEL_PATH}")
+            except Exception as e:
+                print(f"[WARN] LSTM weight load failed, using untrained model: {e}")
+        model.eval()
+        _LSTM_MODEL_CACHE = model
 
     with torch.no_grad():
         x = torch.tensor([time_series], dtype=torch.float32)
-        vci = _CACHED_LSTM_MODEL(x).item()
+        vci = float(_LSTM_MODEL_CACHE(x).item())
 
-    return float(max(0.0, min(100.0, vci)))
+    return max(0.0, min(100.0, vci))
 
 if __name__ == '__main__':
     # Run this file to fetch data and train the model!

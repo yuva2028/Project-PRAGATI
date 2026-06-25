@@ -18,9 +18,9 @@ from sklearn.metrics import (
 )
 
 try:
-    from .feature_engineering import validate_feature_dataframe
-    from .load_data import load_or_create_training_dataframe
-    from .utils import (
+    from project.ml.crop.feature_engineering import validate_feature_dataframe
+    from project.ml.crop.load_data import load_or_create_training_dataframe
+    from project.ml.crop.utils import (
         get_path,
         get_random_seed,
         load_config,
@@ -30,21 +30,38 @@ try:
         setup_logging,
         stratified_train_test_split,
     )
-    from .visualize import plot_confusion_matrix
-except ImportError:  # pragma: no cover - supports direct script execution.
-    from feature_engineering import validate_feature_dataframe
-    from load_data import load_or_create_training_dataframe
-    from utils import (
-        get_path,
-        get_random_seed,
-        load_config,
-        load_model_bundle,
-        normalize_class_mapping,
-        save_json,
-        setup_logging,
-        stratified_train_test_split,
-    )
-    from visualize import plot_confusion_matrix
+    from project.ml.crop.visualize import plot_confusion_matrix
+except ImportError as e:  # pragma: no cover - supports local package execution.
+    print(f"[WARN] Falling back to relative crop imports in evaluate: {e}")
+    try:
+        from .feature_engineering import validate_feature_dataframe
+        from .load_data import load_or_create_training_dataframe
+        from .utils import (
+            get_path,
+            get_random_seed,
+            load_config,
+            load_model_bundle,
+            normalize_class_mapping,
+            save_json,
+            setup_logging,
+            stratified_train_test_split,
+        )
+        from .visualize import plot_confusion_matrix
+    except ImportError as fallback_error:  # pragma: no cover - supports direct script execution.
+        print(f"[WARN] Falling back to script-local crop imports in evaluate: {fallback_error}")
+        from feature_engineering import validate_feature_dataframe
+        from load_data import load_or_create_training_dataframe
+        from utils import (
+            get_path,
+            get_random_seed,
+            load_config,
+            load_model_bundle,
+            normalize_class_mapping,
+            save_json,
+            setup_logging,
+            stratified_train_test_split,
+        )
+        from visualize import plot_confusion_matrix
 
 
 def compute_metrics(

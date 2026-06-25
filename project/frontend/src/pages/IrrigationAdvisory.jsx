@@ -3,7 +3,7 @@ import { MapContainer, TileLayer, CircleMarker, Popup, GeoJSON } from 'react-lea
 import axios from 'axios'
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:8000'
-const INDIA = [22.0, 82.0] // Centered on India
+const KARNATAKA = [15.3, 75.7]
 
 const PRIORITY_CONFIG = {
   CRITICAL: { label:'CRITICAL', className:'badge-critical', icon:'🚨' },
@@ -16,15 +16,15 @@ const PRIORITY_CONFIG = {
 const CANAL_NETWORK = {
   "type": "FeatureCollection",
   "features": [
-    { "type": "Feature", "properties": { "type": "main_canal" }, "geometry": { "type": "LineString", "coordinates": [[75.3, 31.4], [75.6, 31.1], [75.8, 30.9], [76.2, 30.5]] } },
-    { "type": "Feature", "properties": { "type": "distributary" }, "geometry": { "type": "LineString", "coordinates": [[75.6, 31.1], [75.4, 30.8], [75.2, 30.6]] } }
+    { "type": "Feature", "properties": { "type": "main_canal" }, "geometry": { "type": "LineString", "coordinates": [[74.8, 16.2], [75.3, 15.7], [75.9, 15.1], [76.5, 14.5]] } },
+    { "type": "Feature", "properties": { "type": "distributary" }, "geometry": { "type": "LineString", "coordinates": [[75.3, 15.7], [75.7, 15.3], [76.2, 14.9]] } }
   ]
 }
 
 const COMMAND_AREA = {
   "type": "FeatureCollection",
   "features": [
-    { "type": "Feature", "properties": { "name": "Pilot Command Area" }, "geometry": { "type": "Polygon", "coordinates": [[[75.0, 31.5], [76.5, 31.5], [76.5, 30.0], [75.0, 30.0], [75.0, 31.5]]] } }
+    { "type": "Feature", "properties": { "name": "Karnataka Pilot Command Area" }, "geometry": { "type": "Polygon", "coordinates": [[[74.4, 16.8], [77.2, 16.8], [77.2, 13.8], [74.4, 13.8], [74.4, 16.8]]] } }
   ]
 }
 
@@ -61,7 +61,7 @@ export default function IrrigationAdvisory() {
       <div className="page-header">
         <div className="header-badge"><span className="live-dot" /> Rule-Based + FAO-56</div>
         <h2>📋 Irrigation Advisory</h2>
-        <p>Field-level water deficit estimation · Sorted by urgency · India</p>
+        <p>Field-level water deficit estimation · Sorted by urgency · Karnataka</p>
       </div>
 
       {loading && <div className="loading-container"><div className="spinner" /><p className="loading-text">Generating irrigation advisories...</p></div>}
@@ -74,7 +74,16 @@ export default function IrrigationAdvisory() {
             {Object.entries(PRIORITY_CONFIG).map(([key, conf], i) => (
               <div key={key} className="kpi-card fade-in-up"
                 style={{ '--accent-gradient': 'linear-gradient(135deg, var(--bg-card), var(--bg-card))', animationDelay: `${i*0.07}s`, cursor:'pointer' }}
-                onClick={() => setFilter(filter === key ? 'ALL' : key)}>
+                onClick={() => setFilter(filter === key ? 'ALL' : key)}
+                role="button"
+                tabIndex={0}
+                aria-label={`Filter by ${key} priority`}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault()
+                    setFilter(filter === key ? 'ALL' : key)
+                  }
+                }}>
                 <div className="kpi-label">{conf.label}</div>
                 <div className="kpi-value" style={{ fontSize:26 }}>{priorityCounts[key] || 0}</div>
                 <div className="kpi-sub">fields</div>
@@ -92,7 +101,7 @@ export default function IrrigationAdvisory() {
               </div>
               <div className="card-body">
                 <div className="map-wrapper">
-                  <MapContainer center={INDIA} zoom={5} style={{ height:'100%', width:'100%' }}>
+                  <MapContainer center={KARNATAKA} zoom={7} style={{ height:'100%', width:'100%' }}>
                     <TileLayer url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png" />
                     
                     {/* Canal Network Layer */}
@@ -175,16 +184,17 @@ export default function IrrigationAdvisory() {
                 </div>
                 <div className="card-body" style={{ padding:0, overflowX:'auto' }}>
                   <table className="data-table">
+                    <caption className="sr-only">Command area canal distributary advisory table</caption>
                     <thead>
                       <tr>
-                        <th>Command Distributary</th>
-                        <th style={{ textAlign:'center' }}>Monitored Fields</th>
-                        <th style={{ textAlign:'center' }}>Critical Alerts</th>
-                        <th style={{ textAlign:'center' }}>Average VCI</th>
-                        <th style={{ textAlign:'center' }}>Total Crop Demand (mm)</th>
-                        <th style={{ textAlign:'center' }}>Total Deficit (mm)</th>
-                        <th>Recommended Discharge</th>
-                        <th>Gate Controller Action</th>
+                        <th scope="col">Command Distributary</th>
+                        <th scope="col" style={{ textAlign:'center' }}>Monitored Fields</th>
+                        <th scope="col" style={{ textAlign:'center' }}>Critical Alerts</th>
+                        <th scope="col" style={{ textAlign:'center' }}>Average VCI</th>
+                        <th scope="col" style={{ textAlign:'center' }}>Total Crop Demand (mm)</th>
+                        <th scope="col" style={{ textAlign:'center' }}>Total Deficit (mm)</th>
+                        <th scope="col">Recommended Discharge</th>
+                        <th scope="col">Gate Controller Action</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -247,19 +257,20 @@ export default function IrrigationAdvisory() {
               </div>
               <div className="card-body" style={{ padding:0, overflowX:'auto' }}>
                 <table className="data-table">
+                  <caption className="sr-only">Field irrigation advisory table sorted by urgency</caption>
                   <thead>
                     <tr>
-                      <th>Field</th>
-                      <th>Crop</th>
-                      <th>Soil Type</th>
-                      <th>Stage</th>
-                      <th>VCI</th>
-                      <th>Stress</th>
-                      <th>Rainfall (mm)</th>
-                      <th>ETc (mm)</th>
-                      <th>Deficit (mm)</th>
-                      <th>Apply (mm)</th>
-                      <th>Action</th>
+                      <th scope="col">Field</th>
+                      <th scope="col">Crop</th>
+                      <th scope="col">Soil Type</th>
+                      <th scope="col">Stage</th>
+                      <th scope="col">VCI</th>
+                      <th scope="col">Stress</th>
+                      <th scope="col">Rainfall (mm)</th>
+                      <th scope="col">ETc (mm)</th>
+                      <th scope="col">Deficit (mm)</th>
+                      <th scope="col">Apply (mm)</th>
+                      <th scope="col">Action</th>
                     </tr>
                   </thead>
                   <tbody>

@@ -99,7 +99,7 @@ export default function Analytics() {
       <div className="page-header">
         <div className="header-badge"><span className="live-dot" /> GEE · CHIRPS · ERA5</div>
         <h2>📈 Analytics</h2>
-        <p>NDVI Time Series · Rainfall Aggregation · India</p>
+        <p>NDVI Time Series · Rainfall Aggregation · Karnataka</p>
       </div>
 
       {loading && <div className="loading-container"><div className="spinner" /><p className="loading-text">Fetching time series from Google Earth Engine & CHIRPS...</p></div>}
@@ -141,7 +141,7 @@ export default function Analytics() {
               </div>
               <div className="card-body">
                 {ndviChartData ? (
-                  <div style={{ height:300 }}>
+                  <div style={{ height:300 }} role="img" aria-label="NDVI and VCI time series line chart for Karnataka pilot">
                     <Line data={ndviChartData} options={{ ...CHART_OPTS,
                       scales: { ...CHART_OPTS.scales,
                         y: { ...CHART_OPTS.scales.y, min:-0.1, max:1.0,
@@ -172,7 +172,7 @@ export default function Analytics() {
               </div>
               <div className="card-body">
                 {stressTrendData ? (
-                  <div style={{ height:260 }}>
+                  <div style={{ height:260 }} role="img" aria-label="VCI stress level bar chart">
                     <Bar data={stressTrendData} options={{ ...CHART_OPTS,
                       scales: { ...CHART_OPTS.scales,
                         y: { ...CHART_OPTS.scales.y, min:0, max:100,
@@ -196,7 +196,7 @@ export default function Analytics() {
               </div>
               <div className="card-body">
                 {rainfallSeries.length > 0 ? (
-                  <div style={{ height:260 }}>
+                  <div style={{ height:260 }} role="img" aria-label="Monthly CHIRPS rainfall bar chart in millimetres">
                     <Bar
                       data={{
                         labels: rainfallSeries.map(d => d.date),
@@ -235,8 +235,15 @@ export default function Analytics() {
               <div className="card-header"><span className="card-title">Index Reference</span></div>
               <div className="card-body" style={{ padding:0 }}>
                 <table className="data-table">
+                  <caption className="sr-only">Spectral index reference table</caption>
                   <thead>
-                    <tr><th>Index</th><th>Formula</th><th>Bands Used</th><th>Source</th><th>Purpose</th></tr>
+                    <tr>
+                      <th scope="col">Index</th>
+                      <th scope="col">Formula</th>
+                      <th scope="col">Bands Used</th>
+                      <th scope="col">Source</th>
+                      <th scope="col">Purpose</th>
+                    </tr>
                   </thead>
                   <tbody>
                     {[

@@ -16,9 +16,14 @@ from matplotlib.patches import Patch
 from sklearn.metrics import ConfusionMatrixDisplay
 
 try:
-    from .utils import ensure_parent, format_class_labels
-except ImportError:  # pragma: no cover - supports direct script execution.
-    from utils import ensure_parent, format_class_labels
+    from project.ml.crop.utils import ensure_parent, format_class_labels
+except ImportError as e:  # pragma: no cover - supports local package execution.
+    print(f"[WARN] Falling back to relative crop imports in visualize: {e}")
+    try:
+        from .utils import ensure_parent, format_class_labels
+    except ImportError as fallback_error:  # pragma: no cover - supports direct script execution.
+        print(f"[WARN] Falling back to script-local crop imports in visualize: {fallback_error}")
+        from utils import ensure_parent, format_class_labels
 
 
 def plot_confusion_matrix(
@@ -185,4 +190,3 @@ def _unwrap_estimator(model: object) -> object:
     if named_steps and "classifier" in named_steps:
         return named_steps["classifier"]
     return model
-

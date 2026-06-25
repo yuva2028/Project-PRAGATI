@@ -10,9 +10,9 @@ import numpy as np
 import rasterio
 
 try:
-    from .feature_engineering import build_feature_stack
-    from .load_data import load_inference_inputs
-    from .utils import (
+    from project.ml.crop.feature_engineering import build_feature_stack
+    from project.ml.crop.load_data import load_inference_inputs
+    from project.ml.crop.utils import (
         ensure_parent,
         get_path,
         load_config,
@@ -22,21 +22,38 @@ try:
         setup_logging,
         timestamp_utc,
     )
-    from .visualize import plot_crop_map
-except ImportError:  # pragma: no cover - supports direct script execution.
-    from feature_engineering import build_feature_stack
-    from load_data import load_inference_inputs
-    from utils import (
-        ensure_parent,
-        get_path,
-        load_config,
-        load_model_bundle,
-        normalize_class_mapping,
-        save_json,
-        setup_logging,
-        timestamp_utc,
-    )
-    from visualize import plot_crop_map
+    from project.ml.crop.visualize import plot_crop_map
+except ImportError as e:  # pragma: no cover - supports local package execution.
+    print(f"[WARN] Falling back to relative crop imports in inference: {e}")
+    try:
+        from .feature_engineering import build_feature_stack
+        from .load_data import load_inference_inputs
+        from .utils import (
+            ensure_parent,
+            get_path,
+            load_config,
+            load_model_bundle,
+            normalize_class_mapping,
+            save_json,
+            setup_logging,
+            timestamp_utc,
+        )
+        from .visualize import plot_crop_map
+    except ImportError as fallback_error:  # pragma: no cover - supports direct script execution.
+        print(f"[WARN] Falling back to script-local crop imports in inference: {fallback_error}")
+        from feature_engineering import build_feature_stack
+        from load_data import load_inference_inputs
+        from utils import (
+            ensure_parent,
+            get_path,
+            load_config,
+            load_model_bundle,
+            normalize_class_mapping,
+            save_json,
+            setup_logging,
+            timestamp_utc,
+        )
+        from visualize import plot_crop_map
 
 
 def run_inference(config_path: str | Path | None = None) -> dict[str, Path]:
@@ -247,4 +264,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

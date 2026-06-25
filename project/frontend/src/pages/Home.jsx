@@ -70,7 +70,7 @@ export default function Home() {
       <div className="page-header">
         <div className="header-badge">
           <span className="live-dot" />
-          Real-time optical and microwave data across India
+          Real-time optical and microwave data across Karnataka
         </div>
         <h2>🛰️ Project PRAGATI Dashboard</h2>
         <p>AI-Driven Crop Intelligence using Sentinel-1 & Sentinel-2 via Google Earth Engine</p>
@@ -78,13 +78,13 @@ export default function Home() {
 
       {loading && (
         <div className="loading-container">
-          <div className="spinner" />
+          <div className="spinner" role="status" aria-label="Loading satellite data" />
           <p className="loading-text">Fetching live satellite data from GEE...</p>
         </div>
       )}
 
       {error && (
-        <div style={{ padding: '0 32px' }}>
+        <div style={{ padding: '0 32px' }} role="alert" aria-live="assertive">
           <div className="error-card">
             <strong>Backend connection error.</strong> Make sure FastAPI is running on port 8000.
             <br /><code style={{ fontSize:'11px',opacity:0.7 }}>{error}</code>
@@ -133,8 +133,8 @@ export default function Home() {
                 accent: '#f97316', href: '/advisory'
               },
             ].map(f => (
-              <div key={f.title} className="card fade-in-up" style={{ cursor: 'pointer' }}
-                onClick={() => window.location.href = f.href}>
+              <a key={f.title} href={f.href} className="card fade-in-up"
+                style={{ textDecoration:'none', display:'block', color:'inherit' }}>
                 <div className="card-body">
                   <div style={{ fontSize: 36, marginBottom: 12 }}>{f.icon}</div>
                   <h3 style={{ color: f.accent, fontSize: 16, marginBottom: 8, fontWeight: 600 }}>{f.title}</h3>
@@ -143,7 +143,7 @@ export default function Home() {
                     View Dashboard →
                   </div>
                 </div>
-              </div>
+              </a>
             ))}
           </div>
 

@@ -14,10 +14,10 @@ from sklearn.model_selection import GridSearchCV
 from sklearn.pipeline import Pipeline
 
 try:
-    from .evaluate import evaluate_predictions
-    from .feature_engineering import validate_feature_dataframe
-    from .load_data import load_or_create_training_dataframe
-    from .utils import (
+    from project.ml.crop.evaluate import evaluate_predictions
+    from project.ml.crop.feature_engineering import validate_feature_dataframe
+    from project.ml.crop.load_data import load_or_create_training_dataframe
+    from project.ml.crop.utils import (
         ensure_project_directories,
         get_path,
         get_random_seed,
@@ -29,24 +29,44 @@ try:
         stratified_train_test_split,
         timestamp_utc,
     )
-    from .visualize import plot_class_distribution, plot_feature_importance
-except ImportError:  # pragma: no cover - supports direct script execution.
-    from evaluate import evaluate_predictions
-    from feature_engineering import validate_feature_dataframe
-    from load_data import load_or_create_training_dataframe
-    from utils import (
-        ensure_project_directories,
-        get_path,
-        get_random_seed,
-        load_config,
-        normalize_class_mapping,
-        save_model_bundle,
-        set_random_seed,
-        setup_logging,
-        stratified_train_test_split,
-        timestamp_utc,
-    )
-    from visualize import plot_class_distribution, plot_feature_importance
+    from project.ml.crop.visualize import plot_class_distribution, plot_feature_importance
+except ImportError as e:  # pragma: no cover - supports local package execution.
+    print(f"[WARN] Falling back to relative crop imports in train_rf: {e}")
+    try:
+        from .evaluate import evaluate_predictions
+        from .feature_engineering import validate_feature_dataframe
+        from .load_data import load_or_create_training_dataframe
+        from .utils import (
+            ensure_project_directories,
+            get_path,
+            get_random_seed,
+            load_config,
+            normalize_class_mapping,
+            save_model_bundle,
+            set_random_seed,
+            setup_logging,
+            stratified_train_test_split,
+            timestamp_utc,
+        )
+        from .visualize import plot_class_distribution, plot_feature_importance
+    except ImportError as fallback_error:  # pragma: no cover - supports direct script execution.
+        print(f"[WARN] Falling back to script-local crop imports in train_rf: {fallback_error}")
+        from evaluate import evaluate_predictions
+        from feature_engineering import validate_feature_dataframe
+        from load_data import load_or_create_training_dataframe
+        from utils import (
+            ensure_project_directories,
+            get_path,
+            get_random_seed,
+            load_config,
+            normalize_class_mapping,
+            save_model_bundle,
+            set_random_seed,
+            setup_logging,
+            stratified_train_test_split,
+            timestamp_utc,
+        )
+        from visualize import plot_class_distribution, plot_feature_importance
 
 
 CROP_CLASSES = {1: "Rice", 2: "Maize", 3: "Sugarcane", 4: "Others"}
@@ -255,7 +275,7 @@ def load_model(path: Path | str) -> object:
     if not model_path.exists():
         raise FileNotFoundError(
             f"Random Forest model not found at {model_path}. "
-            "Run member2_crop_classification/scripts/train_rf.py first."
+            "Run python -m project.ml.crop.train_rf first."
         )
     return joblib.load(model_path)
 

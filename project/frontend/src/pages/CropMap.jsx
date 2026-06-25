@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react'
-import { MapContainer, TileLayer, WMSTileLayer } from 'react-leaflet'
+import { MapContainer, TileLayer, CircleMarker, Popup } from 'react-leaflet'
 import axios from 'axios'
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:8000'
-const INDIA = [22.0, 82.0]
+const KARNATAKA = [15.3, 75.7]
 
 const CROP_COLORS = {
   Rice:      '#22c55e',
@@ -19,6 +19,7 @@ export default function CropMap() {
   const [showStats, setShowStats] = useState(false)
   const [loading,   setLoading]   = useState(true)
   const [error,     setError]     = useState(null)
+  const [cropPoints, setCropPoints] = useState([])
 
   const [liveData,    setLiveData]    = useState(null)
   const [liveMetrics, setLiveMetrics] = useState(null)
@@ -29,14 +30,16 @@ export default function CropMap() {
       axios.get(`${API}/api/crop-stats`),
       axios.get(`${API}/api/crop-tile?band=${activeBand}`),
       axios.get(`${API}/api/crop-map`).catch(() => null),  // non-blocking
+      axios.get(`${API}/api/crop-geojson`).catch(() => null),
     ])
-    .then(([statsRes, tileRes, cropMapRes]) => {
+    .then(([statsRes, tileRes, cropMapRes, geoRes]) => {
       setCropData(statsRes.data)
       setTileUrl(tileRes.data.tile_url)
       if (cropMapRes?.data) {
         setLiveData(cropMapRes.data)
         setLiveMetrics(cropMapRes.data.metrics || null)
       }
+      if (geoRes?.data?.features) setCropPoints(geoRes.data.features)
       setLoading(false)
     })
     .catch(e => { setError(e.message); setLoading(false) })
@@ -67,7 +70,7 @@ export default function CropMap() {
       <div className="page-header">
         <div className="header-badge"><span className="live-dot" /> Sentinel-2 Optical</div>
         <h2>🌾 Crop Type Classification</h2>
-        <p>Random Forest model · Real Sentinel-1/2 features · India</p>
+        <p>Random Forest model · Real Sentinel-1/2 features · Karnataka</p>
       </div>
 
       {loading && <div className="loading-container"><div className="spinner" /><p className="loading-text">Running Random Forest on GEE pixel samples...</p></div>}
@@ -99,7 +102,9 @@ export default function CropMap() {
                 <div style={{ display:'flex', gap:6 }}>
                   {bands.map(b => (
                     <button key={b} className={`map-btn ${activeBand === b ? 'active':''}`}
-                      onClick={() => setActiveBand(b)}>{b}</button>
+                      onClick={() => setActiveBand(b)}
+                      aria-label={`View ${b} spectral layer`}
+                      aria-pressed={activeBand === b}>{b}</button>
                   ))}
                   <button className="primary-btn" onClick={() => setShowStats(!showStats)}>
                     {showStats ? 'Hide Analytics' : 'Show Analytics'}
@@ -119,19 +124,50 @@ export default function CropMap() {
               </div>
               <div className="card-body">
                 <div className="map-wrapper">
-                  <MapContainer center={INDIA} zoom={5} style={{ height: '100%', width: '100%' }}>
-                    <TileLayer
-                      url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
-                      attribution='&copy; CartoDB'
-                    />
-                    {tileUrl && (
+                  <div role="region" aria-label="Karnataka crop classification satellite map">
+                    <MapContainer center={KARNATAKA} zoom={7} style={{ height: '100%', width: '100%' }}>
                       <TileLayer
-                        url={tileUrl}
-                        opacity={0.8}
-                        attribution="Google Earth Engine | ESA Copernicus"
+                        url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+                        attribution='&copy; CartoDB'
                       />
-                    )}
-                  </MapContainer>
+                      {tileUrl && (
+                        <TileLayer
+                          url={tileUrl}
+                          opacity={0.8}
+                          attribution="Google Earth Engine | ESA Copernicus"
+                        />
+                      )}
+                      {cropPoints.map((f, i) => (
+                        <CircleMarker
+                          key={i}
+                          center={[f.geometry.coordinates[1], f.geometry.coordinates[0]]}
+                          radius={8}
+                          pathOptions={{
+                            color: f.properties.color,
+                            fillColor: f.properties.color,
+                            fillOpacity: 0.85,
+                            weight: 1.5
+                          }}
+                        >
+                          <Popup>
+                            <div>
+                              <strong>{f.properties.crop_name}</strong>
+                              <div>Field: {f.properties.field_id}</div>
+                              <div>Confidence: {f.properties.confidence}%</div>
+                            </div>
+                          </Popup>
+                        </CircleMarker>
+                      ))}
+                    </MapContainer>
+                  </div>
+                </div>
+                <div className="map-point-legend">
+                  {Object.entries(CROP_COLORS).map(([name, color]) => (
+                    <span key={name}>
+                      <span className="legend-swatch" style={{ background: color }} />
+                      {name}
+                    </span>
+                  ))}
                 </div>
                 <p style={{ fontSize:11, color:'var(--text-muted)', marginTop:8, textAlign:'center' }}>
                   {activeBand} layer from Sentinel-2 via Google Earth Engine
@@ -159,7 +195,7 @@ export default function CropMap() {
                     <div style={{ fontSize:28, fontWeight:800, color:'var(--green-400)', fontFamily:'var(--font-mono)' }}>
                       {cropData.total_area_ha.toLocaleString()} ha
                     </div>
-                    <div style={{ fontSize:11, color:'var(--text-muted)' }}>India</div>
+                    <div style={{ fontSize:11, color:'var(--text-muted)' }}>Karnataka, India</div>
                   </div>
                 </div>
               </div>

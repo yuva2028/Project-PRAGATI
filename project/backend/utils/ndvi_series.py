@@ -1,6 +1,6 @@
 """
-Shared NDVI time-series utility for Project PRAGATI backend.
-Eliminates duplication between analytics.py and stress.py.
+Shared NDVI/VCI time-series utilities for Project PRAGATI backend.
+Eliminates duplicate phenology fallback logic in analytics.py and stress.py.
 """
 import math
 from datetime import datetime, timedelta
@@ -21,7 +21,7 @@ def get_phenology_stage(ndvi: float) -> str:
     return "Maturity"
 
 
-# Realistic Kharif/Rabi NDVI pattern for India (Sentinel-2 seasonal composites)
+# Realistic Kharif/Rabi NDVI pattern for Karnataka (Sentinel-2 seasonal composites)
 NDVI_PATTERN = [
     0.18, 0.20, 0.22, 0.21, 0.24, 0.27, 0.31, 0.35, 0.38,
     0.42, 0.47, 0.52, 0.57, 0.62, 0.65, 0.68, 0.70, 0.72,
@@ -31,10 +31,10 @@ NDVI_PATTERN = [
 
 
 def generate_synthetic_ndvi_series() -> list[dict]:
-    """Realistic India Kharif/Rabi NDVI time series (6-month window).
+    """Realistic Karnataka Kharif/Rabi NDVI time series in a 6-month window.
 
     Returns a list of dicts with keys: date, ndvi, phenology_stage, vci.
-    Based on published MODIS/Sentinel-2 seasonal studies for India.
+    Based on published MODIS/Sentinel-2 seasonal studies for Indian crops.
     """
     base_date = datetime.now() - timedelta(days=180)
     results = []
@@ -73,7 +73,8 @@ def get_phenology_metrics(series: list[dict]) -> dict:
         sos_dt   = datetime.strptime(series[sos_idx]["date"], "%Y-%m-%d")
         peak_dt  = datetime.strptime(series[peak_idx]["date"], "%Y-%m-%d")
         lgp_days = (peak_dt - sos_dt).days + 30
-    except Exception:
+    except Exception as e:
+        print(f"[WARN] Phenology date parsing failed: {e}")
         lgp_days = 120
     return {
         "start_of_season":               series[sos_idx]["date"],

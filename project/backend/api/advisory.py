@@ -6,14 +6,30 @@ GET /api/advisory/summary
 """
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, Field
-from typing import Literal, Optional
+from pydantic import BaseModel, Field as PydField
+from typing import Literal
 import time as _time
-from ml.advisory_engine import (
-    generate_bulk_advisories, generate_advisory, get_summary_stats,
-    compute_water_deficit, ADVISORY_RULES, get_command_area_advisories
-)
-from ml.moisture_model import get_stress_category
+try:
+    from project.ml.advisory_engine import (
+        ADVISORY_RULES,
+        generate_advisory,
+        generate_bulk_advisories,
+        get_command_area_advisories,
+        get_regional_et0,
+        get_summary_stats,
+    )
+    from project.ml.moisture_model import get_stress_category
+except ImportError as e:
+    print(f"[WARN] Falling back to local advisory imports: {e}")
+    from ml.advisory_engine import (
+        ADVISORY_RULES,
+        generate_advisory,
+        generate_bulk_advisories,
+        get_command_area_advisories,
+        get_regional_et0,
+        get_summary_stats,
+    )
+    from ml.moisture_model import get_stress_category
 
 router = APIRouter()
 
@@ -66,6 +82,7 @@ async def get_advisory():
         _ADVISORY_CACHE["ts"] = _time.time()
         return result
     except Exception as e:
+        print(f"[WARN] Advisory generation failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -73,6 +90,10 @@ async def get_advisory():
 async def get_advisory_summary():
     """Returns summary statistics for the home dashboard."""
     try:
+        cached_summary = _ADVISORY_CACHE.get("summary")
+        if cached_summary and (_time.time() - _ADVISORY_CACHE.get("summary_ts", 0)) < _ADVISORY_TTL:
+            return cached_summary
+
         # Reuse cached advisories if available
         cached = _ADVISORY_CACHE.get("advisories")
         if cached and (_time.time() - _ADVISORY_CACHE.get("ts", 0)) < _ADVISORY_TTL:
@@ -80,25 +101,28 @@ async def get_advisory_summary():
         else:
             advisories = generate_bulk_advisories(SAMPLE_FIELDS)
         summary = get_summary_stats(advisories)
-        return {"status": "success", **summary}
+        result = {"status": "success", "pilot_area": "Karnataka, India", **summary}
+        _ADVISORY_CACHE["summary"] = result
+        _ADVISORY_CACHE["summary_ts"] = _time.time()
+        return result
     except Exception as e:
+        print(f"[WARN] Advisory summary generation failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
 
 class FieldInput(BaseModel):
-    field_id:    str   = Field(..., min_length=1, max_length=20)
+    field_id:    str   = PydField(..., min_length=1, max_length=30, pattern=r"^[A-Za-z0-9_\-]+$")
     crop:        Literal["Rice", "Maize", "Sugarcane", "Others"]
-    vci:         float = Field(..., ge=0.0, le=100.0)
+    vci:         float = PydField(..., ge=0.0, le=100.0)
     stage:       Literal["Sowing", "Vegetative", "Flowering", "Maturity"]
-    rainfall_mm: float = Field(..., ge=0.0, le=2000.0)
+    rainfall_mm: float = PydField(..., ge=0.0, le=2000.0)
 
 
 @router.post("/advisory/field")
 async def get_field_advisory(field: FieldInput):
     """Generate advisory for a single custom field."""
     try:
-        from ml.advisory_engine import get_regional_et0
         regional_et0 = get_regional_et0(period_days=8)
         stress_cat = get_stress_category(field.vci)
         advisory = generate_advisory(
@@ -110,8 +134,9 @@ async def get_field_advisory(field: FieldInput):
             rainfall_mm=field.rainfall_mm,
             regional_et0=regional_et0,
         )
-        return {"status": "success", "advisory": advisory}
+        return {"status": "success", "pilot_area": "Karnataka, India", "advisory": advisory}
     except Exception as e:
+        print(f"[WARN] Field advisory generation failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -119,14 +144,15 @@ async def get_field_advisory(field: FieldInput):
 async def get_command_summary():
     """Returns aggregated command-area canal distributary water release strategies."""
     try:
-        from ml.advisory_engine import get_command_area_advisories
-        advisories = generate_bulk_advisories()  # generates 150 fields across states
+        advisories = generate_bulk_advisories(SAMPLE_FIELDS)
         command_summaries = get_command_area_advisories(advisories)
         
         return {
             "status": "success",
+            "pilot_area": "Karnataka, India",
             "total_command_distributaries": len(command_summaries),
             "command_areas": command_summaries
         }
     except Exception as e:
+        print(f"[WARN] Command summary generation failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))

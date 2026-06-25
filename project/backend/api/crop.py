@@ -41,7 +41,7 @@ def _load_or_generate_features():
         from ml.realistic_trainer import generate_realistic_features, FEATURE_COLS
 
     csv_path = DATA_DIR / "ground_truth.csv"
-    df = generate_realistic_features(str(csv_path), samples_per_point=12)
+    df = generate_realistic_features(csv_path, samples_per_point=12)
     return df, FEATURE_COLS
 
 
@@ -96,13 +96,6 @@ async def get_crop_map(months_back: int = Query(default=6, ge=1, le=12)):
         except ImportError as e:
             print(f"[WARN] Falling back to local crop_classifier import: {e}")
             from ml.crop_classifier import get_crop_area_stats
-
-        FEATURE_COLS = [
-            "NDVI_t1", "NDWI_t1", "EVI_t1", "B4_t1", "B8_t1", "B11_t1",
-            "VV_t1", "VH_t1", "VH_VV_ratio_t1", "VV_contrast_t1", "VV_entropy_t1",
-            "NDVI_t2", "NDWI_t2", "EVI_t2", "B4_t2", "B8_t2", "B11_t2",
-            "VV_t2", "VH_t2", "VH_VV_ratio_t2", "VV_contrast_t2", "VV_entropy_t2",
-        ]
 
         # Try real GEE data first
         try:
@@ -169,17 +162,23 @@ async def get_crop_geojson():
     """
 
     try:
+        import json
         import joblib
         import pandas as pd
 
         trainer = _import_realistic_trainer()
+        geojson_path = DATA_DIR / "crop_map.geojson"
+        if geojson_path.exists():
+            with geojson_path.open("r", encoding="utf-8") as file:
+                return json.load(file)
+
         model_path = MODEL_DIR / "crop_rf_model.joblib"
         csv_path = DATA_DIR / "ground_truth.csv"
 
         if model_path.exists():
             clf = joblib.load(model_path)
         else:
-            df_train = trainer.generate_realistic_features(str(csv_path), samples_per_point=12)
+            df_train = trainer.generate_realistic_features(csv_path, samples_per_point=8)
             clf, _clf_xgb, _metrics = trainer.train_and_evaluate(df_train)
             model_path.parent.mkdir(parents=True, exist_ok=True)
             joblib.dump(clf, model_path)
