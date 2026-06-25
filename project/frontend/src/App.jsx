@@ -31,7 +31,7 @@ export default function App() {
             </div>
           </div>
 
-          <nav className="sidebar-nav">
+          <nav className="sidebar-nav" aria-label="Main navigation">
             <span className="nav-section-label">Navigation</span>
             {navItems.map(item => (
               <NavLink

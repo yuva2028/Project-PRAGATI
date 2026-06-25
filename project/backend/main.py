@@ -3,12 +3,15 @@ FastAPI Backend - Main Application
 Project PRAGATI: AI-Driven Agriculture Dashboard
 """
 
+import os
+import logging
 import sys
 from pathlib import Path
-import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
+
+_log = logging.getLogger(__name__)
 
 BACKEND_DIR = Path(__file__).resolve().parent
 PROJECT_DIR = BACKEND_DIR.parent
@@ -34,12 +37,20 @@ async def lifespan(app: FastAPI):
         from pathlib import Path as _P
 
         key_path = _P(key_file).resolve() if key_file else _P(".")
+        _allowed_key_dir = _P(
+            os.getenv("GEE_KEY_DIR", str(_P(__file__).resolve().parent))
+        ).resolve()
+        try:
+            key_path.resolve().relative_to(_allowed_key_dir)
+            _key_in_allowed_dir = True
+        except ValueError:
+            _key_in_allowed_dir = False
 
         if (
             service_account and key_file
             and key_path.exists()
             and key_path.suffix == ".json"
-            and str(key_path).startswith(str(_P.cwd()))
+            and _key_in_allowed_dir
         ):
             credentials = ee.ServiceAccountCredentials(
                 email=service_account,
@@ -50,10 +61,10 @@ async def lifespan(app: FastAPI):
             ee.Initialize(project=GEE_PROJECT)
 
         gee_ready = True
-        print("[OK] Google Earth Engine initialized successfully")
+        _log.info("Google Earth Engine initialized successfully")
     except Exception as e:
         gee_ready = False
-        print(f"[WARN] GEE not initialized (run 'earthengine authenticate'): {e}")
+        _log.warning("GEE not initialized (run 'earthengine authenticate'): %s", e)
     yield
 
 # ── FastAPI App ─────────────────────────────────
@@ -69,15 +80,15 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[_origins, "http://localhost:3000", "http://127.0.0.1:5173"],
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST"],
+    allow_headers=["Content-Type", "Authorization"],
 )
 
 # ── Routers ──────────────────────────────────────
 try:
     from backend.api import advisory, crop, stress, analytics, tiles
 except ImportError as e:
-    print(f"[WARN] Falling back to project backend router imports: {e}")
+    _log.warning("Falling back to project backend router imports: %s", e)
     from project.backend.api import advisory, crop, stress, analytics, tiles
 
 app.include_router(crop.router,      prefix="/api", tags=["Crop Classification"])

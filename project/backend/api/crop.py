@@ -5,10 +5,16 @@ GET /api/crop-stats
 GET /api/crop-tile
 """
 
-from fastapi import APIRouter, HTTPException, Query
-import numpy as np
-from pathlib import Path
+import asyncio
+import logging
+import os
 import time as _time
+from pathlib import Path
+
+import numpy as np
+from fastapi import APIRouter, HTTPException, Query
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -37,7 +43,7 @@ def _load_or_generate_features():
     try:
         from project.ml.realistic_trainer import generate_realistic_features, FEATURE_COLS
     except ImportError as e:
-        print(f"[WARN] Falling back to local realistic_trainer import: {e}")
+        logger.warning("Falling back to local realistic_trainer import: %s", e)
         from ml.realistic_trainer import generate_realistic_features, FEATURE_COLS
 
     csv_path = DATA_DIR / "ground_truth.csv"
@@ -51,7 +57,7 @@ def _import_realistic_trainer():
     try:
         from project.ml import realistic_trainer
     except ImportError as e:
-        print(f"[WARN] Falling back to local realistic_trainer import: {e}")
+        logger.warning("Falling back to local realistic_trainer import: %s", e)
         from ml import realistic_trainer
     return realistic_trainer
 
@@ -66,7 +72,7 @@ def _karnataka_points(dataframe):
     if not pilot.empty:
         return pilot.reset_index(drop=True)
 
-    print("[WARN] No Karnataka ground-truth rows found; using pilot demo coordinates.")
+    logger.warning("No Karnataka ground-truth rows found; using pilot demo coordinates.")
     return dataframe.head(12).assign(
         latitude=[
             15.30, 15.45, 14.67, 13.00, 15.85, 12.97,
@@ -94,7 +100,7 @@ async def get_crop_map(months_back: int = Query(default=6, ge=1, le=12)):
         try:
             from project.ml.crop_classifier import get_crop_area_stats
         except ImportError as e:
-            print(f"[WARN] Falling back to local crop_classifier import: {e}")
+            logger.warning("Falling back to local crop_classifier import: %s", e)
             from ml.crop_classifier import get_crop_area_stats
 
         # Try real GEE data first
@@ -102,27 +108,32 @@ async def get_crop_map(months_back: int = Query(default=6, ge=1, le=12)):
             try:
                 from project.ml.crop_classifier import get_training_samples_from_gee
             except ImportError as e:
-                print(f"[WARN] Falling back to local GEE sampler import: {e}")
+                logger.warning("Falling back to local GEE sampler import: %s", e)
                 from ml.crop_classifier import get_training_samples_from_gee
             df = get_training_samples_from_gee()
             source = "Sentinel-2 + Sentinel-1 via GEE"
         except Exception as gee_err:
-            print(f"[WARN] GEE not available, using realistic spectral signature model: {gee_err}")
+            logger.warning(
+                "GEE not available, using realistic spectral signature model: %s",
+                gee_err,
+            )
             df, _ = _load_or_generate_features()
             source = "Sentinel-1/2 Spectral Signature Model (Karnataka Pilot)"
 
         trainer = _import_realistic_trainer()
         FEATURE_COLS = trainer.FEATURE_COLS
         train_and_evaluate = trainer.train_and_evaluate
-        clf_rf, clf_xgb, metrics = train_and_evaluate(df)
+        clf_rf, clf_xgb, metrics = await asyncio.to_thread(train_and_evaluate, df)
         
         # Predictions for Random Forest
         predictions_rf = clf_rf.predict(df[FEATURE_COLS].fillna(0)).tolist()
         area_stats_rf = get_crop_area_stats(predictions_rf)
         
-        # Predictions for XGBoost (add 1 to convert 0-indexed output back to 1-indexed)
+        # Predictions for XGBoost (convert 0-indexed output back to 1-indexed when needed)
         predictions_xgb_raw = clf_xgb.predict(df[FEATURE_COLS].fillna(0)).tolist()
-        predictions_xgb = [int(p) + 1 for p in predictions_xgb_raw]
+        min_pred = min(int(p) for p in predictions_xgb_raw)
+        offset = 1 if min_pred == 0 else 0
+        predictions_xgb = [int(p) + offset for p in predictions_xgb_raw]
         area_stats_xgb = get_crop_area_stats(predictions_xgb)
 
         result = {
@@ -148,7 +159,7 @@ async def get_crop_map(months_back: int = Query(default=6, ge=1, le=12)):
         return result
 
     except Exception as e:
-        print(f"[WARN] Crop classification failed: {e}")
+        logger.warning("Crop classification failed: %s", e)
         raise HTTPException(status_code=500, detail=f"Classification error: {str(e)}")
 
 
@@ -179,9 +190,13 @@ async def get_crop_geojson():
             clf = joblib.load(model_path)
         else:
             df_train = trainer.generate_realistic_features(csv_path, samples_per_point=8)
-            clf, _clf_xgb, _metrics = trainer.train_and_evaluate(df_train)
+            clf, _clf_xgb, _metrics = await asyncio.to_thread(
+                trainer.train_and_evaluate,
+                df_train,
+            )
             model_path.parent.mkdir(parents=True, exist_ok=True)
             joblib.dump(clf, model_path)
+            os.chmod(model_path, 0o600)
 
         df_gt = _karnataka_points(pd.read_csv(csv_path))
         rng = np.random.default_rng(42)
@@ -228,7 +243,7 @@ async def get_crop_geojson():
             },
         }
     except Exception as e:
-        print(f"[WARN] GeoJSON generation failed: {e}")
+        logger.warning("GeoJSON generation failed: %s", e)
         raise HTTPException(status_code=500, detail=f"GeoJSON generation failed: {e}")
 
 
@@ -242,12 +257,12 @@ async def get_crop_tile(band: str = Query(default="NDVI")):
         try:
             from project.gee.sentinel2 import get_tile_url
         except ImportError as e:
-            print(f"[WARN] Falling back to local sentinel2 import: {e}")
+            logger.warning("Falling back to local sentinel2 import: %s", e)
             from gee.sentinel2 import get_tile_url
         tile_url = get_tile_url(band=band, months_back=6)
         return {"band": band, "tile_url": tile_url}
     except Exception as gee_err:
-        print(f"[WARN] GEE tile error: {gee_err}")
+        logger.warning("GEE tile error: %s", gee_err)
         return {
             "band": band,
             "tile_url": "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
@@ -263,7 +278,7 @@ async def export_crop_map():
         try:
             from project.gee.sentinel2 import get_roi, get_median_composite
         except ImportError as import_err:
-            print(f"[WARN] Falling back to local sentinel2 export import: {import_err}")
+            logger.warning("Falling back to local sentinel2 export import: %s", import_err)
             from gee.sentinel2 import get_roi, get_median_composite
         composite = get_median_composite(6, 0).select("NDVI")
         url = composite.getDownloadURL({
@@ -274,7 +289,7 @@ async def export_crop_map():
         })
         return {"status": "success", "download_url": url}
     except Exception as e:
-        print(f"[WARN] Crop export failed: {e}")
+        logger.warning("Crop export failed: %s", e)
         raise HTTPException(status_code=503, detail=f"Export requires GEE auth: {str(e)}")
 
 

@@ -8,12 +8,15 @@ GET /api/analytics
 
 from fastapi import APIRouter, HTTPException
 from datetime import datetime, timedelta
+import logging
 import math
+
+logger = logging.getLogger(__name__)
 
 try:
     from project.backend.utils.ndvi_series import generate_synthetic_ndvi_series, get_phenology_metrics
 except ImportError as e:
-    print(f"[WARN] Falling back to backend NDVI utility import: {e}")
+    logger.warning("Falling back to backend NDVI utility import: %s", e)
     from backend.utils.ndvi_series import generate_synthetic_ndvi_series, get_phenology_metrics
 
 router = APIRouter()
@@ -26,7 +29,7 @@ async def get_ndvi_series():
         try:
             from project.ml.moisture_model import get_ndvi_time_series_for_stress
         except ImportError as e:
-            print(f"[WARN] Falling back to local NDVI series import: {e}")
+            logger.warning("Falling back to local NDVI series import: %s", e)
             from ml.moisture_model import get_ndvi_time_series_for_stress
         res = get_ndvi_time_series_for_stress()
         if res.get("time_series"):
@@ -37,7 +40,7 @@ async def get_ndvi_series():
                 "metrics": res["metrics"],
             }
     except Exception as e:
-        print(f"[WARN] Live NDVI series unavailable: {e}")
+        logger.warning("Live NDVI series unavailable: %s", e)
 
     # Realistic synthetic fallback — no empty data
     series = generate_synthetic_ndvi_series()
@@ -57,7 +60,7 @@ async def get_rainfall():
         try:
             from project.gee.weather import get_rainfall_stats
         except ImportError as e:
-            print(f"[WARN] Falling back to local rainfall import: {e}")
+            logger.warning("Falling back to local rainfall import: %s", e)
             from gee.weather import get_rainfall_stats
         stats = get_rainfall_stats(months_back=6)
         p_sum  = stats.get("precipitation_sum")
@@ -71,7 +74,7 @@ async def get_rainfall():
                 "avg_daily_rainfall_mm": round(p_mean, 2),
             }
     except Exception as e:
-        print(f"[WARN] Live rainfall stats unavailable: {e}")
+        logger.warning("Live rainfall stats unavailable: %s", e)
 
     # Realistic seasonal values for Karnataka (Kharif monsoon period Jun-Nov)
     # Based on IMD / CHIRPS published averages for South Indian agricultural zones
@@ -95,7 +98,7 @@ async def get_rainfall_series():
         try:
             from project.gee.weather import get_monthly_rainfall_series
         except ImportError as e:
-            print(f"[WARN] Falling back to local rainfall-series import: {e}")
+            logger.warning("Falling back to local rainfall-series import: %s", e)
             from gee.weather import get_monthly_rainfall_series
         series = get_monthly_rainfall_series(months_back=6)
         if series and len(series) > 0:
@@ -106,7 +109,7 @@ async def get_rainfall_series():
                 "data": series,
             }
     except Exception as e:
-        print(f"[WARN] Live rainfall series unavailable: {e}")
+        logger.warning("Live rainfall series unavailable: %s", e)
 
     # Realistic Karnataka monsoon fallback (IMD / CHIRPS published seasonal averages)
     # Kharif window: low pre-monsoon, heavy Jul-Aug, tapering post-Oct
@@ -137,14 +140,14 @@ async def get_analytics():
         try:
             from project.ml.moisture_model import get_ndvi_time_series_for_stress
         except ImportError as e:
-            print(f"[WARN] Falling back to local analytics NDVI import: {e}")
+            logger.warning("Falling back to local analytics NDVI import: %s", e)
             from ml.moisture_model import get_ndvi_time_series_for_stress
         res = get_ndvi_time_series_for_stress()
         if res.get("time_series"):
             ndvi_data    = res["time_series"]
             pheno_metrics = res["metrics"]
     except Exception as e:
-        print(f"[WARN] Analytics NDVI fetch unavailable: {e}")
+        logger.warning("Analytics NDVI fetch unavailable: %s", e)
 
     if not ndvi_data:
         series        = generate_synthetic_ndvi_series()
@@ -155,13 +158,13 @@ async def get_analytics():
         try:
             from project.gee.weather import get_rainfall_stats
         except ImportError as e:
-            print(f"[WARN] Falling back to local analytics rainfall import: {e}")
+            logger.warning("Falling back to local analytics rainfall import: %s", e)
             from gee.weather import get_rainfall_stats
         stats = get_rainfall_stats(months_back=6)
         if stats.get("precipitation_sum", 0) > 0:
             rainfall_stats = stats
     except Exception as e:
-        print(f"[WARN] Analytics rainfall fetch unavailable: {e}")
+        logger.warning("Analytics rainfall fetch unavailable: %s", e)
 
     total_mm   = round(rainfall_stats.get("precipitation_sum", 684.3), 1)
     avg_mm     = round(rainfall_stats.get("precipitation_mean", 3.80), 2)

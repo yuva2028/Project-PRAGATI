@@ -243,6 +243,91 @@ export default function CropMap() {
                   )}
                 </div>
               </div>
+
+              {currentMetrics?.confusion_matrix && (() => {
+                const CLASS_NAMES = ['Rice', 'Maize', 'Sugarcane', 'Others']
+                const cm = currentMetrics.confusion_matrix
+                // Row totals for per-class recall
+                const rowTotals = cm.map(row => row.reduce((a, b) => a + b, 0))
+                return (
+                  <div className="card" style={{ marginTop: 24 }}>
+                    <div className="card-header">
+                      <span className="card-title">
+                        📊 Confusion Matrix — {selectedModel.toUpperCase()} Model
+                      </span>
+                      <span style={{ fontSize: 11, color: 'var(--green-600)' }}>
+                        Diagonal = correctly classified · Off-diagonal = misclassified
+                      </span>
+                    </div>
+                    <div className="card-body" style={{ overflowX: 'auto', padding: '16px 0' }}>
+                      <table
+                        className="data-table"
+                        role="grid"
+                        aria-label={`Crop classification confusion matrix for ${selectedModel.toUpperCase()} model`}
+                        style={{ minWidth: 420, margin: '0 auto' }}
+                      >
+                        <caption className="sr-only">
+                          Rows represent true crop labels. Columns represent predicted crop labels.
+                          Diagonal cells show correct classifications highlighted in green.
+                        </caption>
+                        <thead>
+                          <tr>
+                            <th scope="col" style={{ color: 'var(--green-400)', minWidth: 110 }}>
+                              True \ Predicted
+                            </th>
+                            {CLASS_NAMES.map(c => (
+                              <th scope="col" key={c} style={{ textAlign: 'center', minWidth: 80 }}>
+                                {c}
+                              </th>
+                            ))}
+                            <th scope="col" style={{ textAlign: 'center', color: 'var(--green-600)' }}>
+                              Recall %
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {cm.map((row, i) => {
+                            const total = rowTotals[i] || 1
+                            const recall = ((row[i] / total) * 100).toFixed(1)
+                            return (
+                              <tr key={i}>
+                                <th scope="row" style={{ color: 'var(--green-400)', fontWeight: 600 }}>
+                                  {CLASS_NAMES[i]}
+                                </th>
+                                {row.map((val, j) => (
+                                  <td
+                                    key={j}
+                                    style={{
+                                      textAlign: 'center',
+                                      fontWeight: i === j ? 700 : 400,
+                                      background: i === j
+                                        ? 'rgba(34,197,94,0.18)'
+                                        : val > 0
+                                          ? 'rgba(249,115,22,0.10)'
+                                          : 'transparent',
+                                      color: i === j ? '#22c55e' : val > 0 ? '#f97316' : 'var(--text-muted)',
+                                      borderRadius: 4,
+                                      padding: '8px 12px',
+                                    }}
+                                  >
+                                    {val}
+                                  </td>
+                                ))}
+                                <td style={{ textAlign: 'center', color: '#86efac', fontWeight: 600 }}>
+                                  {recall}%
+                                </td>
+                              </tr>
+                            )
+                          })}
+                        </tbody>
+                      </table>
+                      <p style={{ textAlign: 'center', fontSize: 11, color: 'var(--green-700)', marginTop: 10 }}>
+                        Reference: Haralick (1973) · Kussul et al. (2017) · NRSC India SAR Texture Atlas
+                      </p>
+                    </div>
+                  </div>
+                )
+              })()}
             </div>
           </div>
         </>

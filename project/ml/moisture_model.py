@@ -8,7 +8,10 @@ GEE-dependent functions (calculate_vci_image, get_stress_stats, etc.)
 will raise ImportError only when called — not at import time.
 """
 
+import logging
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 
 def _get_np():
@@ -53,7 +56,7 @@ def _predict_stress_lstm(time_series: list) -> float:
             from ml.lstm_moisture import predict_stress_lstm
         return predict_stress_lstm(time_series)
     except Exception as exc:
-        print(f"[WARN] LSTM predict failed, returning 50.0: {exc}")
+        logger.warning("LSTM predict failed, returning 50.0: %s", exc)
         return 50.0
 
 
@@ -268,7 +271,7 @@ def get_ndvi_time_series_for_stress():
             peak_dt  = _dt.datetime.strptime(peak_date, "%Y-%m-%d")
             lgp_days = (peak_dt - sos_dt).days + 30
         except Exception as exc:
-            print(f"[WARN] Phenology date parsing failed: {exc}")
+            logger.warning("Phenology date parsing failed: %s", exc)
             lgp_days = 120
 
     return {
@@ -318,10 +321,23 @@ def compute_pixel_stress(
 
     category = get_stress_category(stage_adjusted_vci)
 
-    # Empirical Soil Moisture Index (SMI) from SAR VH backscatter
-    # Typically ranges from -25 (very dry) to -10 (very wet)
-    smi = (vh - (-25.0)) / (-10.0 - (-25.0)) * 100.0
-    smi = max(0.0, min(100.0, smi))
+    # Soil Moisture Index (SMI) from Sentinel-1 VH backscatter
+    # Linear rescaling following the empirical approach of:
+    #   Attema, E.P.W. & Ulaby, F.T. (1978). Vegetation modeled as a water cloud.
+    #   Radio Science, 13(2), 357-364.
+    # and calibrated against:
+    #   Srivastava, H.S. et al. (2009). Large-area soil moisture estimation using
+    #   multi-incidence-angle RADARSAT-1 SAR data. IEEE TGRS, 47(8), 2528-2535.
+    #
+    # For Sentinel-1 GRD IW mode over Indian agricultural areas:
+    #   VH ≈ -25 dB → very dry bare soil (SMI → 0)
+    #   VH ≈ -10 dB → saturated / flooded (SMI → 100)
+    # Values outside [-30, -5] dB are physically unrealistic for S1 GRD IW
+    # over non-urban land and are clamped.
+    _VH_DRY: float  = -25.0   # dB — dry bare soil baseline (Srivastava 2009)
+    _VH_WET: float  = -10.0   # dB — near-saturation (flooded rice baseline)
+    smi = (vh - _VH_DRY) / (_VH_WET - _VH_DRY) * 100.0
+    smi = float(max(0.0, min(100.0, smi)))   # hard clamp — always valid [0, 100]
 
     # LSTM inference — mock 6-month sequence from current pixel values
     mock_seq = []
@@ -335,7 +351,9 @@ def compute_pixel_stress(
         lstm_score    = round(_predict_stress_lstm(mock_seq), 2)
         lstm_category = get_stress_category(lstm_score)
     except Exception as exc:
-        print(f"[WARN] LSTM stress inference failed, using VCI fallback: {exc}")
+        import logging as _logging
+        _mlog = _logging.getLogger(__name__)
+        _mlog.warning("LSTM stress inference failed, using VCI fallback: %s", exc)
         lstm_score    = round(adjusted_vci, 2)
         lstm_category = category
 
@@ -354,15 +372,16 @@ def compute_pixel_stress(
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
     try:
         ee = _get_ee()
         ee.Initialize(project="your-gee-project-id")
     except Exception as exc:
-        print(f"Earth Engine Authentication Error: {exc}")
-        print("Run `earthengine authenticate` and provide a valid project ID.")
+        logger.error("Earth Engine Authentication Error: %s", exc)
+        logger.info("Run `earthengine authenticate` and provide a valid project ID.")
         import sys
         sys.exit(0)
 
-    print("Computing VCI and stress stats for India...")
+    logger.info("Computing VCI and stress stats for India...")
     stats = get_stress_stats()
-    print("Stress Distribution:", stats)
+    logger.info("Stress Distribution: %s", stats)

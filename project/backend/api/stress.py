@@ -1,36 +1,42 @@
 """
 API Router: Moisture Stress Detection
 GET /api/stress-map
-GET /api/stress-tile
 GET /api/stress-geojson
 GET /api/stress-stats
 GET /api/phenology
 """
 
+import logging
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
 from fastapi import APIRouter, HTTPException
+
+logger = logging.getLogger(__name__)
 
 try:
     from project.backend.utils.ndvi_series import generate_synthetic_ndvi_series, get_phenology_metrics
 except ImportError as e:
-    print(f"[WARN] Falling back to backend NDVI utility import: {e}")
+    logger.warning("Falling back to backend NDVI utility import: %s", e)
     from backend.utils.ndvi_series import generate_synthetic_ndvi_series, get_phenology_metrics
+
+try:
+    from project.ml.moisture_model import PHENOLOGY_STAGES, STRESS_CATEGORIES
+except ImportError as e:
+    logger.warning("Falling back to local moisture model constants import: %s", e)
+    from ml.moisture_model import PHENOLOGY_STAGES, STRESS_CATEGORIES
 
 router = APIRouter()
 
-STRESS_CATEGORIES = {
-    (0,  20):  {"label": "Severe Stress",   "color": "#dc2626", "level": 5},
-    (20, 40):  {"label": "High Stress",     "color": "#f97316", "level": 4},
-    (40, 60):  {"label": "Moderate Stress", "color": "#eab308", "level": 3},
-    (60, 80):  {"label": "Low Stress",      "color": "#84cc16", "level": 2},
-    (80, 100): {"label": "Healthy",         "color": "#22c55e", "level": 1},
-}
+_GT_DF_CACHE: "pd.DataFrame | None" = None
 
-PHENOLOGY_STAGES = {
-    "Sowing":     {"ndvi_range": (0.0, 0.2), "color": "#fbbf24"},
-    "Vegetative": {"ndvi_range": (0.2, 0.5), "color": "#22c55e"},
-    "Flowering":  {"ndvi_range": (0.5, 0.7), "color": "#a855f7"},
-    "Maturity":   {"ndvi_range": (0.7, 1.0), "color": "#f59e0b"},
-}
+
+def _load_ground_truth(csv_path) -> "pd.DataFrame":
+    global _GT_DF_CACHE
+    if _GT_DF_CACHE is None:
+        _GT_DF_CACHE = pd.read_csv(csv_path)
+    return _GT_DF_CACHE
 
 # ──────────────────────────────────────────
 # Realistic India stress distribution
@@ -55,14 +61,14 @@ async def get_stress_map():
         try:
             from project.ml.moisture_model import get_stress_stats
         except ImportError as e:
-            print(f"[WARN] Falling back to local moisture_model import: {e}")
+            logger.warning("Falling back to local moisture_model import: %s", e)
             from ml.moisture_model import get_stress_stats
         stats = get_stress_stats()
         if stats:
             stress_dist = stats
             source = "GEE VCI (Sentinel-2 Live)"
     except Exception as e:
-        print(f"[WARN] Live stress stats unavailable: {e}")
+        logger.warning("Live stress stats unavailable: %s", e)
 
     if not stress_dist:
         stress_dist = INDIA_STRESS_BASELINE
@@ -81,58 +87,23 @@ async def get_stress_map():
         "stress_distribution": stress_dist,
     }
 
-
-@router.get("/stress-tile")
-async def get_stress_tile():
-    """Returns GEE tile URL for VCI stress map. Falls back gracefully when GEE unavailable."""
-    try:
-        try:
-            from project.ml.moisture_model import get_vci_tile_url
-        except ImportError as e:
-            print(f"[WARN] Falling back to local VCI tile import: {e}")
-            from ml.moisture_model import get_vci_tile_url
-        try:
-            tile_url = get_vci_tile_url()
-            return {
-                "layer": "VCI Stress Map",
-                "tile_url": tile_url,
-                "source": "GEE Live",
-                "palette": ["#dc2626", "#f97316", "#eab308", "#84cc16", "#22c55e"],
-            }
-        except Exception as gee_err:
-            print(f"[WARN] GEE stress tile error: {gee_err}")
-    except Exception as e:
-        print(f"[WARN] Stress tile fallback activated: {e}")
-
-    # Non-error fallback with informative response
-    return {
-        "layer": "VCI Stress Map",
-        "tile_url": "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
-        "source": "Base Map (GEE auth required for VCI overlay)",
-        "palette": ["#dc2626", "#f97316", "#eab308", "#84cc16", "#22c55e"],
-    }
-
-
 @router.get("/stress-geojson")
 async def get_stress_geojson():
     """
     Returns moisture stress as GeoJSON FeatureCollection for Leaflet rendering.
     Uses VCI computed per ground-truth point with synthetic but reproducible values.
     """
-    import pandas as pd
-    import numpy as np
-    from pathlib import Path
     try:
         from project.ml.moisture_model import compute_pixel_stress
     except ImportError as e:
-        print(f"[WARN] Falling back to local compute_pixel_stress import: {e}")
+        logger.warning("Falling back to local compute_pixel_stress import: %s", e)
         from ml.moisture_model import compute_pixel_stress
 
-    csv_path = Path(__file__).parent.parent.parent / "data" / "ground_truth.csv"
+    csv_path = Path(__file__).resolve().parents[2] / "data" / "ground_truth.csv"
     try:
-        df = pd.read_csv(csv_path)
+        df = _load_ground_truth(csv_path)
     except Exception as e:
-        print(f"[WARN] ground_truth.csv not found for stress GeoJSON: {e}")
+        logger.warning("ground_truth.csv not found for stress GeoJSON: %s", e)
         raise HTTPException(status_code=500, detail=f"ground_truth.csv not found: {e}")
 
     features = []
@@ -181,7 +152,7 @@ async def get_phenology():
         try:
             from project.ml.moisture_model import get_ndvi_time_series_for_stress
         except ImportError as e:
-            print(f"[WARN] Falling back to local phenology import: {e}")
+            logger.warning("Falling back to local phenology import: %s", e)
             from ml.moisture_model import get_ndvi_time_series_for_stress
         res = get_ndvi_time_series_for_stress()
         if res.get("time_series"):
@@ -196,7 +167,7 @@ async def get_phenology():
                 },
             }
     except Exception as e:
-        print(f"[WARN] Live phenology unavailable: {e}")
+        logger.warning("Live phenology unavailable: %s", e)
 
     # Use the shared NDVI utility to avoid code duplication
     series = generate_synthetic_ndvi_series()

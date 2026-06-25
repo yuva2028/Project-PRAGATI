@@ -77,7 +77,7 @@ export default function IrrigationAdvisory() {
                 onClick={() => setFilter(filter === key ? 'ALL' : key)}
                 role="button"
                 tabIndex={0}
-                aria-label={`Filter by ${key} priority`}
+                aria-label={`Filter by ${key} priority. ${priorityCounts[key] || 0} fields`}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' || e.key === ' ') {
                     e.preventDefault()
@@ -238,19 +238,37 @@ export default function IrrigationAdvisory() {
                 <span className="card-title">Field Advisory Table</span>
                 <div style={{ display:'flex', gap:6 }}>
                   {['ALL', 'CRITICAL', 'HIGH', 'MEDIUM'].map(f => (
-                    <button key={f} className={`map-btn ${filter === f ? 'active':''}`}
-                      onClick={() => setFilter(f)}>{f}</button>
+                    <button
+                      key={f}
+                      className={`map-btn ${filter === f ? 'active' : ''}`}
+                      onClick={() => setFilter(f)}
+                      aria-label={`Show ${f} priority advisories`}
+                      aria-pressed={filter === f}
+                    >
+                      {f}
+                    </button>
                   ))}
-                  <button className="primary-btn" style={{ marginLeft: 12, background: 'var(--bg-secondary)', color: 'var(--green-400)', border: '1px solid var(--green-400)' }} onClick={() => {
+                  <button
+                    className="primary-btn"
+                    aria-label="Export filtered advisories as CSV file"
+                    style={{ marginLeft: 12, background: 'var(--bg-secondary)', color: 'var(--green-400)', border: '1px solid var(--green-400)' }}
+                    onClick={() => {
                     const headers = "Field,Crop,Soil,Stage,VCI,Stress,Rainfall(mm),ETc(mm),Deficit(mm),Apply(mm)\n";
-                    const csv = filtered.map(a => `${a.field_id},${a.crop},${a.soil_type || 'Loam'},${a.growth_stage},${a.vci},${a.stress_level},${a.rainfall_mm},${a.crop_water_requirement_mm},${a.water_deficit_mm},${a.water_to_apply_mm}`).join('\n');
+                    const escCsv = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
+                    const csv = filtered.map(a =>
+                      [a.field_id, a.crop, a.soil_type || 'Loam', a.growth_stage,
+                       a.vci, a.stress_level, a.rainfall_mm,
+                       a.crop_water_requirement_mm, a.water_deficit_mm, a.water_to_apply_mm]
+                      .map(escCsv).join(',')
+                    ).join('\n');
                     const blob = new Blob([headers + csv], { type: 'text/csv' });
                     const url = window.URL.createObjectURL(blob);
                     const a = document.createElement('a');
                     a.href = url;
                     a.download = `irrigation_advisories_${new Date().toISOString().split('T')[0]}.csv`;
                     a.click();
-                  }}>
+                  }}
+                  >
                     📥 Export CSV
                   </button>
                 </div>

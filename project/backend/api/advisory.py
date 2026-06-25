@@ -8,7 +8,11 @@ GET /api/advisory/summary
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field as PydField
 from typing import Literal
+import logging
 import time as _time
+
+logger = logging.getLogger(__name__)
+
 try:
     from project.ml.advisory_engine import (
         ADVISORY_RULES,
@@ -20,7 +24,7 @@ try:
     )
     from project.ml.moisture_model import get_stress_category
 except ImportError as e:
-    print(f"[WARN] Falling back to local advisory imports: {e}")
+    logger.warning("Falling back to local advisory imports: %s", e)
     from ml.advisory_engine import (
         ADVISORY_RULES,
         generate_advisory,
@@ -82,7 +86,7 @@ async def get_advisory():
         _ADVISORY_CACHE["ts"] = _time.time()
         return result
     except Exception as e:
-        print(f"[WARN] Advisory generation failed: {e}")
+        logger.warning("Advisory generation failed: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -106,7 +110,7 @@ async def get_advisory_summary():
         _ADVISORY_CACHE["summary_ts"] = _time.time()
         return result
     except Exception as e:
-        print(f"[WARN] Advisory summary generation failed: {e}")
+        logger.warning("Advisory summary generation failed: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -136,7 +140,7 @@ async def get_field_advisory(field: FieldInput):
         )
         return {"status": "success", "pilot_area": "Karnataka, India", "advisory": advisory}
     except Exception as e:
-        print(f"[WARN] Field advisory generation failed: {e}")
+        logger.warning("Field advisory generation failed: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -154,5 +158,5 @@ async def get_command_summary():
             "command_areas": command_summaries
         }
     except Exception as e:
-        print(f"[WARN] Command summary generation failed: {e}")
+        logger.warning("Command summary generation failed: %s", e)
         raise HTTPException(status_code=500, detail=str(e))

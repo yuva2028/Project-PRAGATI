@@ -24,6 +24,18 @@ from sklearn.metrics import (
     accuracy_score, cohen_kappa_score, f1_score,
     confusion_matrix, classification_report, precision_score, recall_score
 )
+try:
+    from project.ml.crop.glcm_texture import compute_glcm_for_point
+    _GLCM_AVAILABLE = True
+except ImportError:
+    try:
+        from ml.crop.glcm_texture import compute_glcm_for_point
+        _GLCM_AVAILABLE = True
+    except ImportError:
+        _GLCM_AVAILABLE = False
+
+import logging
+logger = logging.getLogger(__name__)
 
 CROP_CLASSES = {1: "Rice", 2: "Maize", 3: "Sugarcane", 4: "Others"}
 CROP_COLORS = {"Rice": "#22c55e", "Maize": "#eab308", "Sugarcane": "#3b82f6", "Others": "#f97316"}
@@ -170,22 +182,42 @@ def generate_realistic_features(
             field_vigor = rng.uniform(0.85, 1.15)
 
             row = {"crop_class": cls}
-            for feat in FEATURE_COLS:
-                mu, sigma = profile[feat]
+            # First pass: generate all non-GLCM features via spectral profiles
+            glcm_features_t1 = ["VV_contrast_t1", "VV_entropy_t1"]
+            glcm_features_t2 = ["VV_contrast_t2", "VV_entropy_t2"]
+            glcm_all = set(glcm_features_t1 + glcm_features_t2)
 
-                # Scale mu by vigor (SAR features less affected)
+            for feat in FEATURE_COLS:
+                if feat in glcm_all:
+                    continue   # handled separately below
+                mu, sigma = profile[feat]
                 is_sar = feat.startswith(("VV", "VH"))
                 effective_mu = mu * (field_vigor if not is_sar else 1.0)
-
-                # Wider effective sigma: within-field + atmospheric + sensor
                 effective_sigma = sigma * rng.uniform(1.0, 1.4)
-
                 val = rng.normal(effective_mu, effective_sigma)
-
-                # Clamp optical indices to valid range
                 if feat.startswith(("NDVI", "NDWI", "EVI", "B4", "B8", "B11")):
                     val = float(np.clip(val, -1.0, 1.0))
                 row[feat] = val
+
+            # Second pass: compute real GLCM from the already-generated VV values
+            if _GLCM_AVAILABLE:
+                # T1 GLCM from VV_t1
+                glcm_t1 = compute_glcm_for_point(row["VV_t1"], rng=rng)
+                row["VV_contrast_t1"] = glcm_t1["contrast"]
+                row["VV_entropy_t1"]  = glcm_t1["entropy"]
+                # T2 GLCM from VV_t2
+                glcm_t2 = compute_glcm_for_point(row["VV_t2"], rng=rng)
+                row["VV_contrast_t2"] = glcm_t2["contrast"]
+                row["VV_entropy_t2"]  = glcm_t2["entropy"]
+            else:
+                # scikit-image not installed: fall back to profile Gaussians with a warning
+                logger.warning(
+                    "scikit-image not available — using Gaussian-simulated GLCM. "
+                    "Run: pip install scikit-image"
+                )
+                for feat in glcm_all:
+                    mu, sigma = profile[feat]
+                    row[feat] = float(rng.normal(mu, sigma * rng.uniform(1.0, 1.4)))
 
             rows.append(row)
 
@@ -199,12 +231,27 @@ def generate_realistic_features(
 
         row = {"crop_class": src_cls}  # labelled as src but has dst-like features
         for feat in FEATURE_COLS:
-            # 60% src, 40% dst features = boundary pixel
+            if feat in glcm_all:
+                continue
             mu_s, sig_s = src_profile[feat]
             mu_d, sig_d = dst_profile[feat]
             blended_mu = 0.60 * mu_s + 0.40 * mu_d
             blended_sig = max(sig_s, sig_d) * 1.2
             row[feat] = float(rng.normal(blended_mu, blended_sig))
+
+        if _GLCM_AVAILABLE:
+            glcm_t1 = compute_glcm_for_point(row["VV_t1"], rng=rng)
+            row["VV_contrast_t1"] = glcm_t1["contrast"]
+            row["VV_entropy_t1"]  = glcm_t1["entropy"]
+            glcm_t2 = compute_glcm_for_point(row["VV_t2"], rng=rng)
+            row["VV_contrast_t2"] = glcm_t2["contrast"]
+            row["VV_entropy_t2"]  = glcm_t2["entropy"]
+        else:
+            for feat in glcm_all:
+                mu_s, sig_s = src_profile[feat]
+                mu_d, sig_d = dst_profile[feat]
+                blended_mu = 0.60 * mu_s + 0.40 * mu_d
+                row[feat] = float(rng.normal(blended_mu, max(sig_s, sig_d) * 1.2))
         rows.append(row)
 
     return pd.DataFrame(rows)

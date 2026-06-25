@@ -13,4 +13,6 @@ rasterio
 matplotlib
 PyYAML
 joblib
+scikit-image==0.23.2
+
 

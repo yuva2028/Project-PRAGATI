@@ -35,6 +35,11 @@ class TestWaterDeficit:
         """Return negative deficit when rainfall exceeds ETc."""
         assert compute_water_deficit("Rice", "Maturity", 200.0, 10.0) < 0
 
+    def test_zero_et0_no_crash(self):
+        """Water deficit with zero ET0 returns non-positive value."""
+        result = compute_water_deficit("Rice", "Vegetative", 10.0, 0.0)
+        assert result <= 0
+
 
 class TestGenerateAdvisory:
     """Validate single-field advisory output."""
@@ -88,6 +93,19 @@ class TestBulkAdvisories:
         priority_map = {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3, "NONE": 4}
         for index in range(len(result) - 1):
             assert priority_map.get(result[index]["priority"], 5) <= priority_map.get(result[index + 1]["priority"], 5)
+
+    def test_bulk_has_location_and_soil_keys(self):
+        """Bulk advisories must include lat, lng, and soil_type."""
+        result = generate_bulk_advisories()
+        assert "lat" in result[0]
+        assert "lng" in result[0]
+        assert "soil_type" in result[0]
+
+    def test_bulk_is_deterministic(self):
+        """Calling twice with no args produces the same ordering."""
+        r1 = generate_bulk_advisories()
+        r2 = generate_bulk_advisories()
+        assert [a["field_id"] for a in r1] == [a["field_id"] for a in r2]
 
 
 class TestCommandAreaAdvisories:

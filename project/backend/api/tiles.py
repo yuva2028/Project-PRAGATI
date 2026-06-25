@@ -4,8 +4,11 @@ GET /api/tiles/{layer}
 GET /api/tiles
 """
 
+import logging
 from fastapi import APIRouter, HTTPException, Path
 from enum import Enum
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -79,7 +82,7 @@ async def get_tile(layer: LayerName):
         }
 
     except Exception as e:
-        print(f"GEE tile fetch failed for layer '{layer_val}' (non-fatal): {e}")
+        logger.warning("GEE tile fetch failed for layer '%s' (non-fatal): %s", layer_val, e)
         return {
             "layer": layer_val,
             "label": label,

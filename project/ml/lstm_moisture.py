@@ -4,15 +4,17 @@ Fetches REAL historical time-series data from Google Earth Engine,
 Trains a PyTorch LSTM model, and predicts Moisture Stress (VCI equivalent).
 """
 
-import ee
-import time
 import datetime
+import logging
+import time
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader, TensorDataset
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 # Ensure weights directory exists
 WEIGHTS_DIR = Path(__file__).resolve().parent / "weights"
@@ -31,7 +33,17 @@ def fetch_real_gee_data(num_points=30, months_back=6):
     Features per month: [NDVI, NDWI, Precipitation]
     Target: VCI calculated from the time-series.
     """
-    print(f"Fetching real GEE time-series data for {num_points} points...")
+    try:
+        import ee
+        ee.Initialize()
+    except Exception as e:
+        logger.warning("GEE not initialized. Please run `earthengine authenticate`: %s", e)
+        return (
+            np.empty((0, months_back, 3), dtype=np.float32),
+            np.empty((0, 1), dtype=np.float32),
+        )
+
+    logger.info("Fetching real GEE time-series data for %s points...", num_points)
     
     # Random sampling bounding box for India
     # [min_lon, min_lat, max_lon, max_lat]
@@ -110,13 +122,13 @@ def fetch_real_gee_data(num_points=30, months_back=6):
             targets.append([vci])
             
             if (i+1) % 5 == 0:
-                print(f"  Processed {i+1}/{num_points} locations...")
+                logger.info("Processed %s/%s locations...", i + 1, num_points)
                 
         except Exception as e:
-            print(f"[WARN] GEE time-series point skipped: {e}")
+            logger.warning("GEE time-series point skipped: %s", e)
             continue
             
-    print(f"Successfully fetched {len(features)} valid time-series samples.")
+    logger.info("Successfully fetched %s valid time-series samples.", len(features))
     return np.array(features, dtype=np.float32), np.array(targets, dtype=np.float32)
 
 
@@ -158,17 +170,11 @@ class MoistureStressLSTM(nn.Module):
 # ──────────────────────────────────────────
 def train_lstm_model():
     """Trains the LSTM model on REAL GEE data."""
-    try:
-        ee.Initialize()
-    except Exception as e:
-        print(f"[WARN] GEE not initialized. Please run `earthengine authenticate`: {e}")
-        return
-
     # Fetch data
     X, y = fetch_real_gee_data(num_points=100, months_back=6)
     
     if len(X) < 10:
-        print("Not enough valid data fetched. Aborting training.")
+        logger.info("Not enough valid data fetched. Aborting training.")
         return
         
     # PyTorch Dataset & DataLoader
@@ -180,7 +186,7 @@ def train_lstm_model():
     optimizer = optim.Adam(model.parameters(), lr=0.005)
     
     epochs = 100
-    print(f"Training Deep Learning LSTM model for {epochs} epochs...")
+    logger.info("Training Deep Learning LSTM model for %s epochs...", epochs)
     
     for epoch in range(epochs):
         model.train()
@@ -194,11 +200,16 @@ def train_lstm_model():
             total_loss += loss.item()
             
         if (epoch+1) % 10 == 0:
-            print(f'Epoch [{epoch+1}/{epochs}], Loss: {total_loss/len(dataloader):.4f}')
+            logger.info(
+                "Epoch [%s/%s], Loss: %.4f",
+                epoch + 1,
+                epochs,
+                total_loss / len(dataloader),
+            )
             
     # Save model weights
     torch.save(model.state_dict(), MODEL_PATH)
-    print(f"Model successfully saved to {MODEL_PATH}")
+    logger.info("Model successfully saved to %s", MODEL_PATH)
 
 
 # ──────────────────────────────────────────
@@ -222,9 +233,9 @@ def predict_stress_lstm(time_series: list) -> float:
                 model.load_state_dict(
                     torch.load(MODEL_PATH, weights_only=True, map_location="cpu")
                 )
-                print(f"[OK] LSTM weights loaded from {MODEL_PATH}")
+                logger.info("LSTM weights loaded from %s", MODEL_PATH)
             except Exception as e:
-                print(f"[WARN] LSTM weight load failed, using untrained model: {e}")
+                logger.warning("LSTM weight load failed, using untrained model: %s", e)
         model.eval()
         _LSTM_MODEL_CACHE = model
 
@@ -235,6 +246,7 @@ def predict_stress_lstm(time_series: list) -> float:
     return max(0.0, min(100.0, vci))
 
 if __name__ == '__main__':
+    logging.basicConfig(level=logging.INFO)
     # Run this file to fetch data and train the model!
     import argparse
     parser = argparse.ArgumentParser()
@@ -244,4 +256,4 @@ if __name__ == '__main__':
     if args.train:
         train_lstm_model()
     else:
-        print("Run with --train to fetch GEE data and train the LSTM.")
+        logger.info("Run with --train to fetch GEE data and train the LSTM.")

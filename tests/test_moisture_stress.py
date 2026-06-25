@@ -76,3 +76,21 @@ class TestComputePixelStress:
         """Constrain SMI to [0, 100]."""
         result = compute_pixel_stress(0.5, 0.1, 0.85, 0.1, -14.0, -20.0)
         assert 0 <= result["smi"] <= 100
+
+    def test_smi_clamped_for_very_low_vh(self):
+        """SMI must not go below 0 even for extreme VH values."""
+        result = compute_pixel_stress(0.3, 0.05, 0.8, -0.1, -18.0, -30.0)
+        assert result["smi"] >= 0
+
+    def test_smi_clamped_for_very_high_vh(self):
+        """SMI must not exceed 100 even for extreme VH values."""
+        result = compute_pixel_stress(0.6, 0.1, 0.9, 0.2, -10.0, -5.0)
+        assert result["smi"] <= 100
+
+    def test_smi_clamped_extreme_low_vh(self):
+        result = compute_pixel_stress(0.3, 0.05, 0.8, -0.1, -18.0, -35.0)
+        assert result["smi"] >= 0
+
+    def test_smi_clamped_extreme_high_vh(self):
+        result = compute_pixel_stress(0.6, 0.1, 0.9, 0.2, -10.0, -3.0)
+        assert result["smi"] <= 100
