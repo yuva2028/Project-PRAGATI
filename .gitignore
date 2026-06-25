@@ -1,0 +1,63 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+*.whl
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Environment / secrets — NEVER commit these
+.env
+.env.local
+.env.*.local
+*.key
+*.pem
+serviceAccount*.json
+gee-key*.json
+
+# GEE credentials (stored by earthengine authenticate)
+# These live in %APPDATA%\earthengine\ — no need to commit
+
+# Trained ML model weights (large binary files)
+project/backend/models/*.joblib
+project/ml/weights/*.h5
+project/ml/weights/*.pt
+project/ml/weights/*.pkl
+
+# Node / frontend
+node_modules/
+project/frontend/dist/
+project/frontend/.cache/
+.npm/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs
+*.log
+logs/
+
+# Database
+*.sqlite3
+*.db

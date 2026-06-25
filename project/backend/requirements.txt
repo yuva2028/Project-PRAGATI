@@ -1,0 +1,12 @@
+fastapi
+uvicorn[standard]
+earthengine-api
+geemap
+scikit-learn
+numpy
+pandas
+joblib
+pydantic
+python-dotenv
+httpx
+torch

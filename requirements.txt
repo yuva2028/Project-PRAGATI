@@ -1,10 +1,16 @@
-numpy
-pandas
+# Core ML & Data Processing
+numpy==1.26.4
+pandas==2.2.2
+scikit-learn==1.5.0
+joblib==1.4.2
+torch>=2.0.0
+xgboost==2.0.3
+
+# Remote Sensing API
+earthengine-api==0.1.390
+geemap==0.31.0
 rasterio
-scikit-learn
 matplotlib
 PyYAML
 joblib
 
-# Optional stretch-goal dependency:
-# xgboost
