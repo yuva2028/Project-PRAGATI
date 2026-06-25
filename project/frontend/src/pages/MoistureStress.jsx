@@ -1,20 +1,18 @@
-import { useState, useEffect } from 'react'
-import { MapContainer, TileLayer, CircleMarker, Popup } from 'react-leaflet'
+import { useState, useEffect, useRef } from 'react'
+import { useGoogleMap } from '../hooks/useGoogleMap.js'
 import { Doughnut } from 'react-chartjs-2'
 import { Chart as ChartJS, ArcElement, Tooltip, Legend } from 'chart.js'
 import axios from 'axios'
-
 ChartJS.register(ArcElement, Tooltip, Legend)
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:8000'
-const KARNATAKA = [15.3, 75.7]
 
-const STRESS_CONFIG = {
-  'Severe Stress':   { color: '#dc2626', badge: 'badge-critical' },
+const STRESS_PALETTE = {
+  'Severe Stress':   { color: '#ef4444', badge: 'badge-critical' },
   'High Stress':     { color: '#f97316', badge: 'badge-high' },
-  'Moderate Stress': { color: '#eab308', badge: 'badge-medium' },
+  'Moderate Stress': { color: '#f59e0b', badge: 'badge-medium' },
   'Low Stress':      { color: '#84cc16', badge: 'badge-low' },
-  'Healthy':         { color: '#22c55e', badge: 'badge-none' },
+  'Healthy':         { color: '#10b981', badge: 'badge-ok' },
 }
 
 const STRESS_ICONS = {
@@ -25,244 +23,288 @@ const STRESS_ICONS = {
   'Healthy': 'OK',
 }
 
-export default function MoistureStress() {
-  const [stressData, setStressData] = useState(null)
-  const [tileUrl,    setTileUrl]    = useState(null)
-  const [phenology,  setPhenology]  = useState([])
-  const [loading,    setLoading]    = useState(true)
-  const [error,      setError]      = useState(null)
+export default function MoistureStress({ userCoords }) {
+  const [stressData,   setStressData]   = useState(null)
+  const [phenology,    setPhenology]    = useState([])
   const [stressPoints, setStressPoints] = useState([])
+  const [loading,      setLoading]      = useState(true)
+  const [error,        setError]        = useState(null)
+
+  const mapRef    = useRef(null)
+  const circlesRef= useRef([])
+  const infoRef   = useRef(null)
+
+  const center = userCoords || { lat: 15.3, lng: 75.7 }
+  const { map, mapsApi } = useGoogleMap(mapRef, { center, zoom: 7 })
 
   useEffect(() => {
     Promise.all([
       axios.get(`${API}/api/stress-map`),
-      axios.get(`${API}/api/tiles/stress`),
       axios.get(`${API}/api/phenology`),
       axios.get(`${API}/api/stress-geojson`).catch(() => null),
-    ])
-    .then(([stressRes, tileRes, phenoRes, sgRes]) => {
+    ]).then(([stressRes, phenoRes, sgRes]) => {
       setStressData(stressRes.data)
-      setTileUrl(tileRes.data.tile_url)
       setPhenology(phenoRes.data.data || [])
       if (sgRes?.data?.features) setStressPoints(sgRes.data.features)
       setLoading(false)
-    })
-    .catch(e => { setError(e.message); setLoading(false) })
+    }).catch(e => { setError(e.message); setLoading(false) })
   }, [])
+
+  // Draw stress points on Google Map
+  useEffect(() => {
+    if (!map || !mapsApi || stressPoints.length === 0) return
+    circlesRef.current.forEach(c => c.setMap(null))
+    circlesRef.current = []
+    if (!infoRef.current) infoRef.current = new mapsApi.InfoWindow()
+
+    stressPoints.forEach(f => {
+      const [lng, lat] = f.geometry.coordinates
+      const { vci, smi, stress_label, stress_color, phenology_stage, crop_name, field_id } = f.properties
+      const color = STRESS_PALETTE[stress_label]?.color || stress_color || '#60a5fa'
+
+      const circle = new mapsApi.Circle({
+        map,
+        center: { lat, lng },
+        radius: 5000,
+        fillColor: color,
+        fillOpacity: 0.65,
+        strokeColor: '#fff',
+        strokeWeight: 1,
+        strokeOpacity: 0.25,
+        clickable: true,
+      })
+
+      circle.addListener('click', () => {
+        infoRef.current.setContent(`
+          <div class="gmap-info">
+            <div class="gmap-info-title">${stress_label}</div>
+            <div class="gmap-info-row"><span>Crop</span><span>${crop_name}</span></div>
+            <div class="gmap-info-row"><span>Stage</span><span>${phenology_stage}</span></div>
+            <div class="gmap-info-row"><span>VCI</span><span>${vci}</span></div>
+          </div>
+        `)
+        infoRef.current.setPosition({ lat, lng })
+        infoRef.current.open(map)
+      })
+
+      circlesRef.current.push(circle)
+    })
+
+    if (userCoords) {
+      const userMarker = new mapsApi.Marker({
+        map,
+        position: userCoords,
+        title: 'Your location',
+        icon: {
+          path: mapsApi.SymbolPath.CIRCLE,
+          scale: 8,
+          fillColor: '#3b82f6',
+          fillOpacity: 1,
+          strokeColor: '#fff',
+          strokeWeight: 2,
+        },
+      })
+      circlesRef.current.push(userMarker)
+    }
+  }, [map, mapsApi, stressPoints, userCoords])
 
   const distribution = stressData?.stress_distribution || {}
   const donutData = {
     labels: Object.keys(distribution),
     datasets: [{
       data: Object.values(distribution).map(v => v.area_ha),
-      backgroundColor: Object.keys(distribution).map(k => STRESS_CONFIG[k]?.color || '#666'),
+      backgroundColor: Object.keys(distribution).map(k => STRESS_PALETTE[k]?.color || '#64748b'),
       borderWidth: 0,
       hoverOffset: 8,
     }]
   }
   const donutOptions = {
     plugins: {
-      legend: { labels: { color: '#86efac', font: { size: 12 }, padding: 20 } },
+      legend: { labels: { color: '#cbd5e1', font: { size: 12 }, padding: 20 } },
       tooltip: {
         callbacks: {
-          label: ctx => ` ${ctx.parsed.toFixed(0)} ha (${distribution[ctx.label]?.percentage}%)`
+          label: ctx => ` ${ctx.parsed.toLocaleString()} ha (${distribution[ctx.label]?.percentage}%)`
         }
       }
     },
     cutout: '65%',
     responsive: true,
+    maintainAspectRatio: false,
   }
 
   return (
     <div>
       <div className="page-header">
-        <div className="header-badge"><span className="live-dot" /> Sentinel-2 + Sentinel-1</div>
-        <h2>💧 Moisture Stress Detection</h2>
-        <p>VCI from NDVI anomalies · Phenology-aware classification · Karnataka</p>
+        <div className="page-eyebrow">
+          <span className="live-dot" aria-hidden="true" />
+          Sentinel-2 Optical · Sentinel-1 SAR
+        </div>
+        <h1 className="page-title">Moisture Stress Detection</h1>
+        <p className="page-subtitle">
+          VCI from NDVI anomalies · Phenology-aware classification · Karnataka
+        </p>
       </div>
 
-      {loading && <div className="loading-container"><div className="spinner" /><p className="loading-text">Computing VCI from Sentinel-2 time series...</p></div>}
-      {error   && <div style={{padding:'0 32px'}}><div className="error-card">API Error: {error}</div></div>}
+      {error   && <div className="error-card" role="alert">API Error: {error}</div>}
 
-      {!loading && stressData && (
-        <>
-          {/* VCI Formula Banner */}
-          <div style={{ padding: '0 32px 24px' }}>
-            <div style={{ background:'var(--bg-card)', border:'1px solid var(--border)', borderRadius:'var(--radius-md)', padding:'16px 24px', display:'flex', flexWrap:'wrap', gap:24, alignItems:'center' }}>
+      <>
+        {/* VCI Formula Banner */}
+        <div style={{ padding: '0 24px 24px', marginTop: '24px' }}>
+          <div className="card">
+            <div className="card-body" style={{ display:'flex', flexWrap:'wrap', gap:24, alignItems:'center' }}>
               <div>
-                <div style={{ fontSize:11, color:'var(--text-muted)', marginBottom:4 }}>DEEP LEARNING MODEL</div>
-                <div style={{ fontFamily:'var(--font-mono)', color:'var(--green-400)', fontSize:14, fontWeight:500 }}>
+                <div style={{ fontSize:11, color:'var(--navy-400)', marginBottom:4, fontWeight:600, letterSpacing:'0.05em' }}>DEEP LEARNING MODEL</div>
+                <div style={{ fontFamily:'var(--font-mono)', color:'var(--emerald-400)', fontSize:13 }}>
                   LSTM(NDVI<sub style={{fontSize:9}}>t</sub>, NDWI<sub style={{fontSize:9}}>t</sub>, Precip<sub style={{fontSize:9}}>t</sub>) → Stress Score
                 </div>
               </div>
               <div>
-                <div style={{ fontSize:11, color:'var(--text-muted)', marginBottom:4 }}>SOIL MOISTURE INDEX (SMI)</div>
-                <div style={{ fontFamily:'var(--font-mono)', color:'var(--blue-400)', fontSize:14, fontWeight:500 }}>
+                <div style={{ fontSize:11, color:'var(--navy-400)', marginBottom:4, fontWeight:600, letterSpacing:'0.05em' }}>SOIL MOISTURE INDEX (SMI)</div>
+                <div style={{ fontFamily:'var(--font-mono)', color:'var(--blue-400)', fontSize:13 }}>
                   SMI = (VH<sub style={{fontSize:9}}>t</sub> + 25) / 15 × 100
                 </div>
               </div>
               <div>
-                <div style={{ fontSize:11, color:'var(--text-muted)', marginBottom:4 }}>DATA SOURCE</div>
-                <div style={{ color:'var(--text-secondary)', fontSize:13 }}>Sentinel-2 SR · 6-Month Archive · Google Earth Engine</div>
+                <div style={{ fontSize:11, color:'var(--navy-400)', marginBottom:4, fontWeight:600, letterSpacing:'0.05em' }}>DATA SOURCE</div>
+                <div style={{ color:'var(--navy-200)', fontSize:12 }}>Sentinel-2 SR · 6-Month Archive</div>
               </div>
               <div>
-                <div style={{ fontSize:11, color:'var(--text-muted)', marginBottom:4 }}>SAR CORRECTION</div>
-                <div style={{ color:'var(--text-secondary)', fontSize:13 }}>Sentinel-1 VH backscatter adjustment for monsoon cloud periods</div>
+                <div style={{ fontSize:11, color:'var(--navy-400)', marginBottom:4, fontWeight:600, letterSpacing:'0.05em' }}>SAR CORRECTION</div>
+                <div style={{ color:'var(--navy-200)', fontSize:12 }}>Sentinel-1 VH backscatter adjustment</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="section-grid cols-2">
+          {/* Stress Map */}
+          <div className="card">
+            <div className="card-header">
+              <span className="card-title">LSTM Stress Map</span>
+              <div style={{ display:'flex', gap:4 }}>
+                {['#ef4444','#f97316','#f59e0b','#84cc16','#10b981'].map((c,i) => (
+                  <div key={i} style={{ width:20, height:8, background:c, borderRadius:2 }} />
+                ))}
+              </div>
+            </div>
+            <div className="card-body" style={{ padding: 0 }}>
+              <div className="gmap-container" style={{ height: 420, borderRadius: 0, position: 'relative' }} role="region" aria-label="Karnataka moisture stress satellite map">
+                <div ref={mapRef} style={{ width: '100%', height: '100%' }} />
+                {loading && (
+                  <div style={{ position: 'absolute', inset: 0, background: 'rgba(10,15,30,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10 }}>
+                    <div className="spinner" />
+                    <span style={{ marginLeft: 12, color: '#fff', fontWeight: 500 }}>Computing VCI from Sentinel-2 time series…</span>
+                  </div>
+                )}
+              </div>
+              <div style={{ display:'flex', gap:12, padding: '12px 18px', flexWrap:'wrap', background: 'var(--navy-950)' }}>
+                {['Severe','High','Moderate','Low','Healthy'].map((l, i) => (
+                  <div key={l} style={{ display:'flex', alignItems:'center', gap:6 }}>
+                    <div style={{ width:10, height:10, borderRadius:2, background:['#ef4444','#f97316','#f59e0b','#84cc16','#10b981'][i] }} />
+                    <span style={{ fontSize:11, color:'var(--navy-300)' }}>{l}</span>
+                  </div>
+                ))}
               </div>
             </div>
           </div>
 
-          <div className="section-grid cols-2" style={{ padding: '0 32px 32px' }}>
-            {/* Stress Map */}
+          {/* Donut Chart + Stats */}
+          <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
             <div className="card">
-              <div className="card-header">
-                <span className="card-title">LSTM Stress Map</span>
-                <div style={{ display:'flex', gap:4 }}>
-                  {['#dc2626','#f97316','#eab308','#84cc16','#22c55e'].map((c,i) => (
-                    <div key={i} style={{ width:20, height:8, background:c, borderRadius:2 }} />
-                  ))}
-                </div>
-              </div>
+              <div className="card-header"><span className="card-title">Stress Distribution</span></div>
               <div className="card-body">
-                <div className="map-wrapper">
-                  <div role="region" aria-label="Karnataka moisture stress satellite map">
-                    <MapContainer center={KARNATAKA} zoom={7} style={{ height:'100%', width:'100%' }}>
-                      <TileLayer url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png" attribution="CartoDB" />
-                      {tileUrl && <TileLayer url={tileUrl} opacity={0.85} attribution="GEE | Sentinel-2" />}
-                      {stressPoints.map((f, i) => (
-                        <CircleMarker
-                          key={i}
-                          center={[f.geometry.coordinates[1], f.geometry.coordinates[0]]}
-                          radius={8}
-                          pathOptions={{
-                            color: f.properties.stress_color,
-                            fillColor: f.properties.stress_color,
-                            fillOpacity: 0.85,
-                            weight: 1.5
-                          }}
-                        >
-                          <Popup>
-                            <div>
-                              <strong>{f.properties.stress_label}</strong>
-                              <div>Crop: {f.properties.crop_name}</div>
-                              <div>VCI: {f.properties.vci}</div>
-                              <div>Stage: {f.properties.phenology_stage}</div>
-                            </div>
-                          </Popup>
-                        </CircleMarker>
-                      ))}
-                    </MapContainer>
+                {Object.keys(distribution).length > 0 ? (
+                  <div style={{ height: 220, position: 'relative' }} role="img" aria-label="Moisture stress distribution donut chart showing area percentages">
+                    <Doughnut data={donutData} options={donutOptions} />
                   </div>
-                </div>
-                <div style={{ display:'flex', gap:12, marginTop:12, flexWrap:'wrap' }}>
-                  {['Severe','High','Moderate','Low','Healthy'].map((l, i) => (
-                    <div key={l} style={{ display:'flex', alignItems:'center', gap:5 }}>
-                      <div style={{ width:10, height:10, borderRadius:2, background:['#dc2626','#f97316','#eab308','#84cc16','#22c55e'][i] }} />
-                      <span style={{ fontSize:11, color:'var(--text-muted)' }}>{l}</span>
-                    </div>
-                  ))}
-                </div>
+                ) : (
+                  <p style={{ color:'var(--navy-400)', fontSize:12 }}>No data available.</p>
+                )}
               </div>
             </div>
 
-            {/* Donut Chart + Stats */}
-            <div style={{ display:'flex', flexDirection:'column', gap:20 }}>
-              <div className="card">
-                <div className="card-header"><span className="card-title">Stress Distribution</span></div>
-                <div className="card-body">
-                  {Object.keys(distribution).length > 0 ? (
-                    <div style={{ height: 220 }} role="img" aria-label="Moisture stress distribution donut chart showing area percentages">
-                      <Doughnut data={donutData} options={donutOptions} />
+            <div className="card">
+              <div className="card-header"><span className="card-title">Phenology Timeline</span></div>
+              <div className="card-body">
+                <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
+                  {[
+                    { label:'Sowing',     ndvi:'0.0–0.2', color:'#f59e0b', icon:'🌱' },
+                    { label:'Vegetative', ndvi:'0.2–0.5', color:'#10b981', icon:'🌿' },
+                    { label:'Flowering',  ndvi:'0.5–0.7', color:'#8b5cf6', icon:'🌸' },
+                    { label:'Maturity',   ndvi:'0.7–1.0', color:'#f97316', icon:'🌾' },
+                  ].map(s => (
+                    <div key={s.label} style={{
+                      flex:'1 1 calc(50% - 8px)',
+                      background:'rgba(255,255,255,0.03)',
+                      border:`1px solid ${s.color}33`,
+                      borderRadius: 'var(--r-sm)',
+                      padding:'10px 12px',
+                    }}>
+                      <div style={{ fontSize:18, marginBottom:4 }}>{s.icon}</div>
+                      <div style={{ fontWeight:600, color:s.color, fontSize:12 }}>{s.label}</div>
+                      <div style={{ fontSize:11, color:'var(--navy-400)' }}>NDVI: {s.ndvi}</div>
                     </div>
-                  ) : (
-                    <p style={{ color:'var(--text-muted)', fontSize:12 }}>No GEE data – run backend with GEE credentials.</p>
-                  )}
-                </div>
-              </div>
-
-              <div className="card">
-                <div className="card-header"><span className="card-title">Phenology Timeline</span></div>
-                <div className="card-body">
-                  <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
-                    {[
-                      { label:'Sowing',     ndvi:'0.0–0.2', color:'#fbbf24', icon:'🌱' },
-                      { label:'Vegetative', ndvi:'0.2–0.5', color:'#22c55e', icon:'🌿' },
-                      { label:'Flowering',  ndvi:'0.5–0.7', color:'#a855f7', icon:'🌸' },
-                      { label:'Maturity',   ndvi:'0.7–1.0', color:'#f59e0b', icon:'🌾' },
-                    ].map(s => (
-                      <div key={s.label} style={{
-                        flex:'1 1 calc(50% - 8px)',
-                        background:'var(--bg-secondary)',
-                        border:`1px solid ${s.color}33`,
-                        borderRadius:8,
-                        padding:'10px 12px',
-                      }}>
-                        <div style={{ fontSize:18, marginBottom:4 }}>{s.icon}</div>
-                        <div style={{ fontWeight:600, color:s.color, fontSize:12 }}>{s.label}</div>
-                        <div style={{ fontSize:11, color:'var(--text-muted)' }}>NDVI: {s.ndvi}</div>
-                      </div>
-                    ))}
-                  </div>
+                  ))}
                 </div>
               </div>
             </div>
           </div>
+        </div>
 
-          {/* Stress Table */}
-          {Object.keys(distribution).length > 0 && (
-            <div style={{ padding:'0 32px 32px' }}>
-              <div className="card">
-                <div className="card-header"><span className="card-title">Stress Category Breakdown</span></div>
-                <div className="card-body" style={{ padding:0 }}>
-                  <table className="data-table">
-                    <caption className="sr-only">Moisture stress category breakdown by area and VCI range</caption>
-                    <thead>
-                      <tr>
-                        <th scope="col" aria-label="Stress icon">Icon</th>
-                        <th scope="col">Stress Category</th>
-                        <th scope="col">VCI Range</th>
-                        <th scope="col">Area (ha)</th>
-                        <th scope="col">Coverage</th>
-                        <th scope="col">Status</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {stressData.stress_categories.map(cat => {
-                        const dist = distribution[cat.label] || {}
-                        const conf = STRESS_CONFIG[cat.label] || {}
-                        return (
-                          <tr key={cat.label}>
-                            <td aria-hidden="true">{STRESS_ICONS[cat.label] || '-'}</td>
-                            <td>
+        {/* Stress Table */}
+        {Object.keys(distribution).length > 0 && stressData?.stress_categories && (
+          <div style={{ padding:'0 24px 28px' }}>
+            <div className="card">
+              <div className="card-header"><span className="card-title">Stress Category Breakdown</span></div>
+              <div className="card-body" style={{ padding:0 }}>
+                <table className="data-table">
+                  <caption className="sr-only">Moisture stress category breakdown by area and VCI range</caption>
+                  <thead>
+                    <tr>
+                      <th scope="col" aria-label="Stress icon">Icon</th>
+                      <th scope="col">Stress Category</th>
+                      <th scope="col">VCI Range</th>
+                      <th scope="col">Area (ha)</th>
+                      <th scope="col">Coverage</th>
+                      <th scope="col">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {stressData.stress_categories.map(cat => {
+                      const dist = distribution[cat.label] || {}
+                      const conf = STRESS_PALETTE[cat.label] || {}
+                      return (
+                        <tr key={cat.label}>
+                          <td aria-hidden="true">{STRESS_ICONS[cat.label] || '-'}</td>
+                          <td>
+                            <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                              <div style={{ width:12, height:12, borderRadius:3, background:cat.color }} />
+                              <span style={{ color:'#fff', fontWeight:500 }}>{cat.label}</span>
+                            </div>
+                          </td>
+                          <td><code style={{ fontSize:12, color:'var(--navy-400)', fontFamily:'var(--font-mono)' }}>{cat.vci_range}</code></td>
+                          <td><span style={{ fontFamily:'var(--font-mono)', color: cat.color }}>{dist.area_ha?.toLocaleString() || '—'}</span></td>
+                          <td>
+                            {dist.percentage != null && (
                               <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-                                <div style={{ width:12, height:12, borderRadius:3, background:cat.color }} />
-                                <span style={{ color:'var(--text-primary)', fontWeight:500 }}>{cat.label}</span>
-                              </div>
-                            </td>
-                            <td><code style={{ fontSize:12, color:'var(--text-muted)' }}>{cat.vci_range}</code></td>
-                            <td><span style={{ fontFamily:'var(--font-mono)', color: cat.color }}>{dist.area_ha?.toLocaleString() || '—'}</span></td>
-                            <td>
-                              {dist.percentage != null && (
-                                <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-                                  <div className="progress-bar" style={{ flex:1, maxWidth:100 }}>
-                                    <div className="progress-fill" style={{ width:`${dist.percentage}%`, background:cat.color }} />
-                                  </div>
-                                  <span style={{ fontSize:11, color:'var(--text-muted)' }}>{dist.percentage}%</span>
+                                <div className="progress-track" style={{ flex:1, maxWidth:100, marginTop:0 }}>
+                                  <div className="progress-fill" style={{ width:`${dist.percentage}%`, background:cat.color }} />
                                 </div>
-                              )}
-                            </td>
-                            <td><span className={`badge ${conf.badge}`}>{cat.label}</span></td>
-                          </tr>
-                        )
-                      })}
-                    </tbody>
-                  </table>
-                </div>
+                                <span style={{ fontSize:11, color:'var(--navy-400)' }}>{dist.percentage}%</span>
+                              </div>
+                            )}
+                          </td>
+                          <td><span className={`badge ${conf.badge}`}>{cat.label}</span></td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
               </div>
             </div>
-          )}
-        </>
-      )}
+          </div>
+        )}
+      </>
     </div>
   )
 }

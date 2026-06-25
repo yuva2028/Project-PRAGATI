@@ -14,13 +14,14 @@ const API = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
 const CHART_OPTS = {
   responsive: true,
+  maintainAspectRatio: false,
   plugins: {
-    legend: { labels: { color: '#86efac', font: { size: 12 } } },
-    tooltip: { backgroundColor: '#0f2318', borderColor: '#22c55e', borderWidth: 1 }
+    legend: { labels: { color: '#94a3b8', font: { size: 12 } } },
+    tooltip: { backgroundColor: '#1e293b', borderColor: '#3b82f6', borderWidth: 1 }
   },
   scales: {
-    x: { grid: { color: 'rgba(34,197,94,0.06)' }, ticks: { color: '#4b7a5e', font: { size: 10 }, maxTicksLimit: 8 } },
-    y: { grid: { color: 'rgba(34,197,94,0.06)' }, ticks: { color: '#4b7a5e', font: { size: 10 } } },
+    x: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#64748b', font: { size: 10 }, maxTicksLimit: 8 } },
+    y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#64748b', font: { size: 10 } } },
   }
 }
 
@@ -48,7 +49,7 @@ export default function Analytics() {
     .catch(e => { setError(e.message); setLoading(false) })
   }, [])
 
-  const STAGE_COLORS = { Sowing:'#fbbf24', Vegetative:'#22c55e', Flowering:'#a855f7', Maturity:'#f59e0b' }
+  const STAGE_COLORS = { Sowing:'#f59e0b', Vegetative:'#10b981', Flowering:'#8b5cf6', Maturity:'#f97316' }
 
   const ndviChartData = ndviData.length ? {
     labels: ndviData.map(d => d.date),
@@ -56,11 +57,11 @@ export default function Analytics() {
       {
         label: 'NDVI',
         data: ndviData.map(d => d.ndvi),
-        borderColor: '#22c55e',
-        backgroundColor: 'rgba(34,197,94,0.08)',
+        borderColor: '#10b981',
+        backgroundColor: 'rgba(16,185,129,0.08)',
         fill: true,
         tension: 0.4,
-        pointBackgroundColor: ndviData.map(d => STAGE_COLORS[d.phenology_stage] || '#22c55e'),
+        pointBackgroundColor: ndviData.map(d => STAGE_COLORS[d.phenology_stage] || '#10b981'),
         pointRadius: 5,
         pointHoverRadius: 8,
       },
@@ -83,11 +84,11 @@ export default function Analytics() {
       data: ndviData.map(d => d.vci),
       backgroundColor: ndviData.map(d => {
         const v = d.vci
-        if (v < 20) return '#dc2626'
+        if (v < 20) return '#ef4444'
         if (v < 40) return '#f97316'
-        if (v < 60) return '#eab308'
+        if (v < 60) return '#f59e0b'
         if (v < 80) return '#84cc16'
-        return '#22c55e'
+        return '#10b981'
       }),
       borderWidth: 0,
       borderRadius: 4,
@@ -97,13 +98,18 @@ export default function Analytics() {
   return (
     <div>
       <div className="page-header">
-        <div className="header-badge"><span className="live-dot" /> GEE · CHIRPS · ERA5</div>
-        <h2>📈 Analytics</h2>
-        <p>NDVI Time Series · Rainfall Aggregation · Karnataka</p>
+        <div className="page-eyebrow">
+          <span className="live-dot" aria-hidden="true" />
+          GEE · CHIRPS · ERA5
+        </div>
+        <h1 className="page-title">Analytics</h1>
+        <p className="page-subtitle">
+          NDVI Time Series · Rainfall Aggregation · Karnataka
+        </p>
       </div>
 
-      {loading && <div className="loading-container"><div className="spinner" /><p className="loading-text">Fetching time series from Google Earth Engine & CHIRPS...</p></div>}
-      {error   && <div style={{padding:'0 32px'}}><div className="error-card">API Error: {error}</div></div>}
+      {loading && <div className="loading-wrap"><div className="spinner" /><p className="loading-text">Fetching time series from Google Earth Engine & CHIRPS…</p></div>}
+      {error   && <div className="error-card" role="alert">API Error: {error}</div>}
 
       {!loading && (
         <>
@@ -112,26 +118,27 @@ export default function Analytics() {
             <div className="kpi-grid">
               {[
                 { label:'Total Rainfall (6mo)', value:`${rainfallData.total_rainfall_mm} mm`, sub:'CHIRPS Daily Aggregate', color:'#3b82f6' },
-                { label:'Avg Daily Rainfall',   value:`${rainfallData.avg_daily_rainfall_mm} mm`, sub:'CHIRPS per-pixel mean', color:'#14b8a6' },
-                { label:'Start of Season',      value: phenoMetrics?.start_of_season || 'N/A', sub:'Algorithmic SOS detection', color:'#22c55e' },
-                { label:'Peak Growth Date',     value: phenoMetrics?.peak_growth_date || 'N/A', sub:'Max NDVI in series', color:'#a855f7' },
+                { label:'Avg Daily Rainfall',   value:`${rainfallData.avg_daily_rainfall_mm} mm`, sub:'CHIRPS per-pixel mean', color:'#0ea5e9' },
+                { label:'Start of Season',      value: phenoMetrics?.start_of_season || 'N/A', sub:'Algorithmic SOS detection', color:'#10b981' },
+                { label:'Peak Growth Date',     value: phenoMetrics?.peak_growth_date || 'N/A', sub:'Max NDVI in series', color:'#8b5cf6' },
                 { label:'Est. LGP',             value: phenoMetrics?.length_of_growing_period_days ? `${phenoMetrics.length_of_growing_period_days} Days` : 'N/A', sub:'Length of Growing Period', color:'#f97316' },
               ].map((k, i) => (
-                <div key={k.label} className="kpi-card fade-in-up" style={{ '--accent-gradient': `linear-gradient(135deg, ${k.color}44, ${k.color}11)`, animationDelay:`${(i+2)*0.07}s` }}>
+                <div key={k.label} className="kpi-card fade-up" style={{ animationDelay:`${(i)*0.05}s` }}>
                   <div className="kpi-label">{k.label}</div>
-                  <div className="kpi-value" style={{ color: k.color, fontSize:24 }}>{k.value}</div>
+                  <div className="kpi-value" style={{ color: k.color }}>{k.value}</div>
                   <div className="kpi-sub">{k.sub}</div>
+                  <div className="kpi-accent-bar" style={{ background: k.color + '40' }} />
                 </div>
               ))}
             </div>
           )}
 
-          <div className="section-grid" style={{ padding:'0 32px 32px', gridTemplateColumns:'1fr' }}>
+          <div className="section-grid" style={{ gridTemplateColumns:'1fr' }}>
             {/* NDVI Time Series */}
-            <div className="card fade-in-up">
+            <div className="card fade-up" style={{ animationDelay: '0.25s' }}>
               <div className="card-header">
                 <span className="card-title">NDVI & VCI Time Series</span>
-                <div style={{ display:'flex', gap:12, fontSize:11, color:'var(--text-muted)' }}>
+                <div style={{ display:'flex', gap:12, fontSize:11, color:'var(--navy-400)' }}>
                   {Object.entries(STAGE_COLORS).map(([s,c]) => (
                     <div key={s} style={{ display:'flex', alignItems:'center', gap:4 }}>
                       <div style={{ width:8,height:8,borderRadius:'50%',background:c }} /> {s}
@@ -145,12 +152,12 @@ export default function Analytics() {
                     <Line data={ndviChartData} options={{ ...CHART_OPTS,
                       scales: { ...CHART_OPTS.scales,
                         y: { ...CHART_OPTS.scales.y, min:-0.1, max:1.0,
-                          title: { display:true, text:'Index Value', color:'#4b7a5e' } }
+                          title: { display:true, text:'Index Value', color:'#64748b' } }
                       }
                     }} />
                   </div>
                 ) : (
-                  <p style={{ color:'var(--text-muted)', fontSize:12, textAlign:'center', padding:40 }}>
+                  <p style={{ color:'var(--navy-400)', fontSize:12, textAlign:'center', padding:40 }}>
                     NDVI data requires GEE authentication. Connect backend to see live chart.
                   </p>
                 )}
@@ -158,14 +165,14 @@ export default function Analytics() {
             </div>
 
             {/* VCI Stress Bar Chart */}
-            <div className="card fade-in-up">
+            <div className="card fade-up" style={{ animationDelay: '0.3s' }}>
               <div className="card-header">
                 <span className="card-title">Stress Level Trend (VCI)</span>
                 <div style={{ display:'flex', gap:6 }}>
                   {['0-20 Severe','20-40 High','40-60 Mod','60-80 Low','80+ Healthy'].map((l,i) => (
                     <div key={l} style={{ display:'flex', alignItems:'center', gap:4, fontSize:10 }}>
-                      <div style={{ width:8,height:8,borderRadius:2,background:['#dc2626','#f97316','#eab308','#84cc16','#22c55e'][i] }} />
-                      <span style={{ color:'var(--text-muted)' }}>{l}</span>
+                      <div style={{ width:8,height:8,borderRadius:2,background:['#ef4444','#f97316','#f59e0b','#84cc16','#10b981'][i] }} />
+                      <span style={{ color:'var(--navy-400)' }}>{l}</span>
                     </div>
                   ))}
                 </div>
@@ -176,12 +183,12 @@ export default function Analytics() {
                     <Bar data={stressTrendData} options={{ ...CHART_OPTS,
                       scales: { ...CHART_OPTS.scales,
                         y: { ...CHART_OPTS.scales.y, min:0, max:100,
-                          title: { display:true, text:'VCI Score', color:'#4b7a5e' } }
+                          title: { display:true, text:'VCI Score', color:'#64748b' } }
                       }
                     }} />
                   </div>
                 ) : (
-                  <p style={{ color:'var(--text-muted)', fontSize:12, textAlign:'center', padding:40 }}>
+                  <p style={{ color:'var(--navy-400)', fontSize:12, textAlign:'center', padding:40 }}>
                     Stress trend requires live GEE data. Connect backend to see real values.
                   </p>
                 )}
@@ -189,10 +196,10 @@ export default function Analytics() {
             </div>
 
             {/* CHIRPS Monthly Rainfall Chart */}
-            <div className="card fade-in-up">
+            <div className="card fade-up" style={{ animationDelay: '0.35s' }}>
               <div className="card-header">
                 <span className="card-title">Monthly Rainfall (CHIRPS)</span>
-                <span style={{ fontSize:11, color:'var(--text-muted)' }}>India · 6-month · mm/month</span>
+                <span style={{ fontSize:11, color:'var(--navy-400)' }}>India · 6-month · mm/month</span>
               </div>
               <div className="card-body">
                 {rainfallSeries.length > 0 ? (
@@ -216,13 +223,13 @@ export default function Analytics() {
                       options={{ ...CHART_OPTS,
                         scales: { ...CHART_OPTS.scales,
                           y: { ...CHART_OPTS.scales.y, min:0,
-                            title: { display:true, text:'Rainfall (mm)', color:'#4b7a5e' } }
+                            title: { display:true, text:'Rainfall (mm)', color:'#64748b' } }
                         }
                       }}
                     />
                   </div>
                 ) : (
-                  <p style={{ color:'var(--text-muted)', fontSize:12, textAlign:'center', padding:40 }}>
+                  <p style={{ color:'var(--navy-400)', fontSize:12, textAlign:'center', padding:40 }}>
                     Loading CHIRPS rainfall series...
                   </p>
                 )}
@@ -230,22 +237,21 @@ export default function Analytics() {
             </div>
 
             {/* Index Reference Table */}
-
-            <div className="card fade-in-up">
+            <div className="card fade-up" style={{ animationDelay: '0.4s' }}>
               <div className="card-header"><span className="card-title">Index Reference</span></div>
               <div className="card-body" style={{ padding:0 }}>
-                <table className="data-table">
+                <table className="data-table" style={{ width: '100%', overflowX: 'auto', display: 'block' }}>
                   <caption className="sr-only">Spectral index reference table</caption>
-                  <thead>
+                  <thead style={{ display: 'table', width: '100%', tableLayout: 'fixed' }}>
                     <tr>
-                      <th scope="col">Index</th>
-                      <th scope="col">Formula</th>
-                      <th scope="col">Bands Used</th>
-                      <th scope="col">Source</th>
-                      <th scope="col">Purpose</th>
+                      <th scope="col" style={{ width: '15%' }}>Index</th>
+                      <th scope="col" style={{ width: '35%' }}>Formula</th>
+                      <th scope="col" style={{ width: '15%' }}>Bands Used</th>
+                      <th scope="col" style={{ width: '15%' }}>Source</th>
+                      <th scope="col" style={{ width: '20%' }}>Purpose</th>
                     </tr>
                   </thead>
-                  <tbody>
+                  <tbody style={{ display: 'table', width: '100%', tableLayout: 'fixed' }}>
                     {[
                       { idx:'NDVI', formula:'(NIR−RED)/(NIR+RED)', bands:'B8, B4', src:'Sentinel-2', purpose:'Vegetation vigor' },
                       { idx:'NDWI', formula:'(NIR−SWIR)/(NIR+SWIR)', bands:'B8, B11', src:'Sentinel-2', purpose:'Water content' },
@@ -255,11 +261,11 @@ export default function Analytics() {
                       { idx:'VCI',  formula:'(NDVI−NDVImin)/(NDVImax−NDVImin)×100', bands:'Derived', src:'GEE Composite', purpose:'Moisture stress' },
                     ].map(r => (
                       <tr key={r.idx}>
-                        <td><strong style={{ color:'var(--green-400)', fontFamily:'var(--font-mono)' }}>{r.idx}</strong></td>
-                        <td><code style={{ fontSize:11, color:'var(--text-muted)' }}>{r.formula}</code></td>
-                        <td><code style={{ fontSize:11, color:'var(--blue-500)' }}>{r.bands}</code></td>
-                        <td style={{ fontSize:12 }}>{r.src}</td>
-                        <td style={{ fontSize:12, color:'var(--text-muted)' }}>{r.purpose}</td>
+                        <td style={{ width: '15%' }}><strong style={{ color:'var(--blue-400)', fontFamily:'var(--font-mono)' }}>{r.idx}</strong></td>
+                        <td style={{ width: '35%' }}><code style={{ fontSize:11, color:'var(--navy-300)' }}>{r.formula}</code></td>
+                        <td style={{ width: '15%' }}><code style={{ fontSize:11, color:'var(--blue-300)' }}>{r.bands}</code></td>
+                        <td style={{ fontSize:12, width: '15%', color: 'var(--navy-200)' }}>{r.src}</td>
+                        <td style={{ fontSize:12, color:'var(--navy-400)', width: '20%' }}>{r.purpose}</td>
                       </tr>
                     ))}
                   </tbody>

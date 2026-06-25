@@ -1,16 +1,15 @@
-import { useState, useEffect } from 'react'
-import { MapContainer, TileLayer, CircleMarker, Popup, GeoJSON } from 'react-leaflet'
+import { useState, useEffect, useRef } from 'react'
+import { useGoogleMap } from '../hooks/useGoogleMap.js'
 import axios from 'axios'
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:8000'
-const KARNATAKA = [15.3, 75.7]
 
 const PRIORITY_CONFIG = {
   CRITICAL: { label:'CRITICAL', className:'badge-critical', icon:'🚨' },
   HIGH:     { label:'HIGH',     className:'badge-high',     icon:'⚠️' },
   MEDIUM:   { label:'MEDIUM',   className:'badge-medium',   icon:'🔔' },
   LOW:      { label:'LOW',      className:'badge-low',      icon:'💬' },
-  NONE:     { label:'NONE',     className:'badge-none',     icon:'✅' },
+  NONE:     { label:'NONE',     className:'badge-ok',       icon:'✅' },
 }
 
 const CANAL_NETWORK = {
@@ -28,12 +27,19 @@ const COMMAND_AREA = {
   ]
 }
 
-export default function IrrigationAdvisory() {
+export default function IrrigationAdvisory({ userCoords }) {
   const [data,    setData]    = useState(null)
   const [commandData, setCommandData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error,   setError]   = useState(null)
   const [filter,  setFilter]  = useState('ALL')
+
+  const mapRef    = useRef(null)
+  const markersRef= useRef([])
+  const infoRef   = useRef(null)
+
+  const center = userCoords || { lat: 15.3, lng: 75.7 }
+  const { map, mapsApi } = useGoogleMap(mapRef, { center, zoom: 7 })
 
   useEffect(() => {
     Promise.all([
@@ -56,261 +62,229 @@ export default function IrrigationAdvisory() {
     return acc
   }, {})
 
+  // Google Maps setup
+  useEffect(() => {
+    if (!map || !mapsApi) return
+
+    markersRef.current.forEach(m => m.setMap(null))
+    markersRef.current = []
+    if (!infoRef.current) infoRef.current = new mapsApi.InfoWindow()
+
+    // Add GeoJSON data for canals and command areas
+    map.data.addGeoJson(CANAL_NETWORK)
+    map.data.addGeoJson(COMMAND_AREA)
+
+    map.data.setStyle((feature) => {
+      if (feature.getGeometry().getType() === 'LineString') {
+        const isMain = feature.getProperty('type') === 'main_canal'
+        return {
+          strokeColor: isMain ? '#3b82f6' : '#60a5fa',
+          strokeWeight: isMain ? 3 : 1.5,
+          zIndex: 1
+        }
+      } else if (feature.getGeometry().getType() === 'Polygon') {
+        return {
+          fillColor: '#f59e0b',
+          fillOpacity: 0.05,
+          strokeColor: '#f59e0b',
+          strokeWeight: 2,
+          zIndex: 0
+        }
+      }
+    })
+
+    // Add field markers
+    filtered.filter(a => a.lat && a.lng).forEach(a => {
+      const circle = new mapsApi.Circle({
+        map,
+        center: { lat: a.lat, lng: a.lng },
+        radius: 3000,
+        fillColor: a.advisory_color || '#3b82f6',
+        fillOpacity: 0.8,
+        strokeColor: '#fff',
+        strokeWeight: 1,
+        clickable: true,
+      })
+
+      circle.addListener('click', () => {
+        infoRef.current.setContent(`
+          <div class="gmap-info">
+            <div class="gmap-info-title">Field ${a.field_id}</div>
+            <div class="gmap-info-row"><span>Crop</span><span>${a.crop}</span></div>
+            <div class="gmap-info-row"><span>Stage</span><span>${a.growth_stage}</span></div>
+            <div class="gmap-info-row"><span>Stress</span><span>${a.stress_level}</span></div>
+            <div class="gmap-info-row"><span>VCI</span><span>${a.vci}</span></div>
+            <div class="gmap-info-row"><span>Water needed</span><span>${a.water_to_apply_mm} mm</span></div>
+            <div style="margin-top:6px; font-weight:600; color:${a.advisory_color}">${a.recommendation}</div>
+          </div>
+        `)
+        infoRef.current.setPosition({ lat: a.lat, lng: a.lng })
+        infoRef.current.open(map)
+      })
+
+      markersRef.current.push(circle)
+    })
+
+    if (userCoords) {
+      const userMarker = new mapsApi.Marker({
+        map,
+        position: userCoords,
+        title: 'Your location',
+        icon: {
+          path: mapsApi.SymbolPath.CIRCLE,
+          scale: 8,
+          fillColor: '#3b82f6',
+          fillOpacity: 1,
+          strokeColor: '#fff',
+          strokeWeight: 2,
+        },
+      })
+      markersRef.current.push(userMarker)
+    }
+
+    return () => {
+      // Clean up GeoJSON features if needed, though they stay on the map instance
+      map.data.forEach(feature => map.data.remove(feature))
+    }
+  }, [map, mapsApi, filtered, userCoords])
+
   return (
     <div>
       <div className="page-header">
-        <div className="header-badge"><span className="live-dot" /> Rule-Based + FAO-56</div>
-        <h2>📋 Irrigation Advisory</h2>
-        <p>Field-level water deficit estimation · Sorted by urgency · Karnataka</p>
+        <div className="page-eyebrow">
+          <span className="live-dot" aria-hidden="true" />
+          Rule-Based + FAO-56
+        </div>
+        <h1 className="page-title">Irrigation Advisory</h1>
+        <p className="page-subtitle">
+          Field-level water deficit estimation · Sorted by urgency · Karnataka
+        </p>
       </div>
 
-      {loading && <div className="loading-container"><div className="spinner" /><p className="loading-text">Generating irrigation advisories...</p></div>}
-      {error   && <div style={{padding:'0 32px'}}><div className="error-card">API Error: {error}</div></div>}
+      {error   && <div className="error-card" role="alert">API Error: {error}</div>}
 
-      {!loading && data && (
-        <>
-          {/* Priority KPIs */}
-          <div className="kpi-grid">
-            {Object.entries(PRIORITY_CONFIG).map(([key, conf], i) => (
-              <div key={key} className="kpi-card fade-in-up"
-                style={{ '--accent-gradient': 'linear-gradient(135deg, var(--bg-card), var(--bg-card))', animationDelay: `${i*0.07}s`, cursor:'pointer' }}
-                onClick={() => setFilter(filter === key ? 'ALL' : key)}
-                role="button"
-                tabIndex={0}
-                aria-label={`Filter by ${key} priority. ${priorityCounts[key] || 0} fields`}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault()
-                    setFilter(filter === key ? 'ALL' : key)
-                  }
+      <>
+        {/* Priority KPIs */}
+        <div className="kpi-grid">
+          {Object.entries(PRIORITY_CONFIG).map(([key, conf], i) => (
+            <div key={key} className="kpi-card fade-up"
+              style={{ animationDelay: `${i*0.05}s`, cursor:'pointer' }}
+              onClick={() => setFilter(filter === key ? 'ALL' : key)}
+              role="button"
+              tabIndex={0}
+              aria-label={`Filter by ${key} priority. ${priorityCounts[key] || 0} fields`}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault()
+                  setFilter(filter === key ? 'ALL' : key)
+                }
+              }}>
+              <div className="kpi-label">{conf.label}</div>
+              <div className="kpi-value" style={{ fontSize:26 }}>{priorityCounts[key] || 0}</div>
+              <div className="kpi-sub">fields</div>
+              <div style={{ position:'absolute', top:16, right:16, fontSize:22 }}>{conf.icon}</div>
+              <div className="kpi-accent-bar" style={{ background: filter === key ? 'var(--blue-500)' : 'transparent', transition: 'background 0.2s' }} />
+            </div>
+          ))}
+        </div>
+
+        <div className="section-grid cols-2">
+          {/* Map with field markers */}
+          <div className="card">
+            <div className="card-header">
+              <span className="card-title">Field Advisory Map</span>
+              <span style={{ fontSize:11, color:'var(--navy-400)' }}>Click markers for details</span>
+            </div>
+            <div className="card-body" style={{ padding: 0 }}>
+              <div className="gmap-container" style={{ height: 420, borderRadius: 0, position: 'relative' }} role="region" aria-label="Field advisory map">
+                <div ref={mapRef} style={{ width: '100%', height: '100%' }} />
+                {loading && (
+                  <div style={{ position: 'absolute', inset: 0, background: 'rgba(10,15,30,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10 }}>
+                    <div className="spinner" />
+                    <span style={{ marginLeft: 12, color: '#fff', fontWeight: 500 }}>Generating irrigation advisories…</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Advisory Rules Reference */}
+          <div className="card">
+            <div className="card-header"><span className="card-title">Advisory Rules</span></div>
+            <div className="card-body">
+              {Object.entries(data?.advisory_rules || {}).map(([stress, rule]) => (
+                <div key={stress} style={{
+                  display:'flex', justifyContent:'space-between', alignItems:'center',
+                  padding:'10px 0', borderBottom:'1px solid rgba(255,255,255,0.05)', gap:12
                 }}>
-                <div className="kpi-label">{conf.label}</div>
-                <div className="kpi-value" style={{ fontSize:26 }}>{priorityCounts[key] || 0}</div>
-                <div className="kpi-sub">fields</div>
-                <div style={{ position:'absolute', top:16, right:16, fontSize:22 }}>{conf.icon}</div>
-              </div>
-            ))}
-          </div>
-
-          <div className="section-grid cols-2" style={{ padding:'0 32px 32px' }}>
-            {/* Map with field markers */}
-            <div className="card">
-              <div className="card-header">
-                <span className="card-title">Field Advisory Map</span>
-                <span style={{ fontSize:11, color:'var(--text-muted)' }}>Click markers for details</span>
-              </div>
-              <div className="card-body">
-                <div className="map-wrapper">
-                  <MapContainer center={KARNATAKA} zoom={7} style={{ height:'100%', width:'100%' }}>
-                    <TileLayer url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png" />
-                    
-                    {/* Canal Network Layer */}
-                    <GeoJSON data={CANAL_NETWORK} style={f => ({
-                      color: f.properties.type === 'main_canal' ? '#3b82f6' : '#60a5fa',
-                      weight: f.properties.type === 'main_canal' ? 3 : 1.5,
-                      dashArray: f.properties.type === 'distributary' ? '4 4' : ''
-                    })} />
-                    
-                    {/* Command Area Boundary Layer */}
-                    <GeoJSON data={COMMAND_AREA} style={() => ({
-                      color: '#f59e0b', weight: 2, fillOpacity: 0.05, dashArray: '5 5'
-                    })} />
-
-                    {advisories.filter(a => a.lat && a.lng).map(a => (
-                      <CircleMarker
-                        key={a.field_id}
-                        center={[a.lat, a.lng]}
-                        radius={14}
-                        pathOptions={{ color: a.advisory_color, fillColor: a.advisory_color, fillOpacity: 0.8, weight: 2 }}
-                      >
-                        <Popup>
-                          <div style={{ fontFamily:'Inter, sans-serif', minWidth:180 }}>
-                            <strong style={{ color:'#111', display:'block', marginBottom:4 }}>Field {a.field_id}</strong>
-                            <div><b>Crop:</b> {a.crop}</div>
-                            <div><b>Stage:</b> {a.growth_stage}</div>
-                            <div><b>Stress:</b> {a.stress_level}</div>
-                            <div><b>VCI:</b> {a.vci}</div>
-                            <div><b>Water needed:</b> {a.water_to_apply_mm} mm</div>
-                            <div style={{ marginTop:6, fontWeight:600, color: a.advisory_color }}>
-                              {a.recommendation}
-                            </div>
-                          </div>
-                        </Popup>
-                      </CircleMarker>
-                    ))}
-                  </MapContainer>
+                  <div>
+                    <div style={{ fontSize:12, color:'#fff', fontWeight:500 }}>{stress}</div>
+                    <div style={{ fontSize:11, color:'var(--navy-300)' }}>{rule.message}</div>
+                  </div>
+                  <div style={{ textAlign:'right', flexShrink:0 }}>
+                    <span className={`badge badge-${rule.priority?.toLowerCase()}`}>{rule.urgency}</span>
+                  </div>
                 </div>
-              </div>
-            </div>
-
-            {/* Advisory Rules Reference */}
-            <div className="card">
-              <div className="card-header"><span className="card-title">Advisory Rules</span></div>
-              <div className="card-body">
-                {Object.entries(data.advisory_rules || {}).map(([stress, rule]) => (
-                  <div key={stress} style={{
-                    display:'flex', justifyContent:'space-between', alignItems:'center',
-                    padding:'10px 0', borderBottom:'1px solid var(--border)', gap:12
-                  }}>
-                    <div>
-                      <div style={{ fontSize:12, color:'var(--text-primary)', fontWeight:500 }}>{stress}</div>
-                      <div style={{ fontSize:11, color:'var(--text-muted)' }}>{rule.message}</div>
-                    </div>
-                    <div style={{ textAlign:'right', flexShrink:0 }}>
-                      <span className={`badge badge-${rule.priority?.toLowerCase()}`}>{rule.urgency}</span>
-                    </div>
-                  </div>
-                ))}
-                <div style={{ marginTop:16, background:'var(--bg-secondary)', borderRadius:8, padding:'12px' }}>
-                  <div style={{ fontSize:11, color:'var(--text-muted)', marginBottom:4 }}>WATER BALANCE MODEL</div>
-                  <div style={{ fontFamily:'var(--font-mono)', fontSize:12, color:'var(--green-400)' }}>
-                    ETc = ET₀ × Kc (FAO-56)
-                  </div>
-                  <div style={{ fontFamily:'var(--font-mono)', fontSize:12, color:'var(--teal-500)' }}>
-                    Deficit = ETc − Rainfall
-                  </div>
+              ))}
+              <div style={{ marginTop:16, background:'rgba(255,255,255,0.03)', borderRadius:'var(--r-sm)', padding:'12px' }}>
+                <div style={{ fontSize:11, color:'var(--navy-400)', marginBottom:4, fontWeight:600, letterSpacing:'0.05em' }}>WATER BALANCE MODEL</div>
+                <div style={{ fontFamily:'var(--font-mono)', fontSize:12, color:'var(--emerald-400)' }}>
+                  ETc = ET₀ × Kc (FAO-56)
+                </div>
+                <div style={{ fontFamily:'var(--font-mono)', fontSize:12, color:'var(--blue-400)' }}>
+                  Deficit = ETc − Rainfall
                 </div>
               </div>
             </div>
           </div>
+        </div>
 
-          {/* Command Area Gate Advisory Table */}
-          {commandData && (
-            <div style={{ padding:'0 32px 32px' }}>
-              <div className="card">
-                <div className="card-header" style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-                  <span className="card-title">🚰 Canal Command Distributary Advisory (PMKSY Planning)</span>
-                  <span className="badge badge-none" style={{ color: 'var(--blue-400)', background: 'var(--blue-500)22' }}>Canal Gate Controller Strategy</span>
-                </div>
-                <div className="card-body" style={{ padding:0, overflowX:'auto' }}>
-                  <table className="data-table">
-                    <caption className="sr-only">Command area canal distributary advisory table</caption>
-                    <thead>
-                      <tr>
-                        <th scope="col">Command Distributary</th>
-                        <th scope="col" style={{ textAlign:'center' }}>Monitored Fields</th>
-                        <th scope="col" style={{ textAlign:'center' }}>Critical Alerts</th>
-                        <th scope="col" style={{ textAlign:'center' }}>Average VCI</th>
-                        <th scope="col" style={{ textAlign:'center' }}>Total Crop Demand (mm)</th>
-                        <th scope="col" style={{ textAlign:'center' }}>Total Deficit (mm)</th>
-                        <th scope="col">Recommended Discharge</th>
-                        <th scope="col">Gate Controller Action</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {commandData.map(c => (
-                        <tr key={c.command_area}>
-                          <td><strong style={{ color:'var(--blue-400)' }}>{c.command_area}</strong></td>
-                          <td style={{ textAlign:'center', fontFamily:'var(--font-mono)' }}>{c.total_fields_monitored}</td>
-                          <td style={{ textAlign:'center' }}>
-                            <span className={c.critical_fields > 0 ? 'badge badge-critical' : 'badge badge-none'}>
-                              {c.critical_fields}
-                            </span>
-                          </td>
-                          <td style={{ textAlign:'center', fontFamily:'var(--font-mono)' }}>{c.average_vci}%</td>
-                          <td style={{ textAlign:'center', fontFamily:'var(--font-mono)' }}>{c.total_crop_demand_mm}</td>
-                          <td style={{ textAlign:'center', fontFamily:'var(--font-mono)', color: c.total_deficit_mm > 0 ? '#ef4444' : '#22c55e' }}>
-                            {c.total_deficit_mm}
-                          </td>
-                          <td>
-                            <span className="badge" style={{ background: c.color+'22', color: c.color, fontWeight:700 }}>
-                              {c.discharge_recommendation}
-                            </span>
-                          </td>
-                          <td>
-                            <div style={{ fontSize:11, color:'var(--text-secondary)' }}>
-                              {c.gate_action}
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Advisory Table */}
-          <div style={{ padding:'0 32px 32px' }}>
+        {/* Command Area Gate Advisory Table */}
+        {commandData && (
+          <div style={{ padding:'0 24px 28px' }}>
             <div className="card">
-              <div className="card-header">
-                <span className="card-title">Field Advisory Table</span>
-                <div style={{ display:'flex', gap:6 }}>
-                  {['ALL', 'CRITICAL', 'HIGH', 'MEDIUM'].map(f => (
-                    <button
-                      key={f}
-                      className={`map-btn ${filter === f ? 'active' : ''}`}
-                      onClick={() => setFilter(f)}
-                      aria-label={`Show ${f} priority advisories`}
-                      aria-pressed={filter === f}
-                    >
-                      {f}
-                    </button>
-                  ))}
-                  <button
-                    className="primary-btn"
-                    aria-label="Export filtered advisories as CSV file"
-                    style={{ marginLeft: 12, background: 'var(--bg-secondary)', color: 'var(--green-400)', border: '1px solid var(--green-400)' }}
-                    onClick={() => {
-                    const headers = "Field,Crop,Soil,Stage,VCI,Stress,Rainfall(mm),ETc(mm),Deficit(mm),Apply(mm)\n";
-                    const escCsv = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
-                    const csv = filtered.map(a =>
-                      [a.field_id, a.crop, a.soil_type || 'Loam', a.growth_stage,
-                       a.vci, a.stress_level, a.rainfall_mm,
-                       a.crop_water_requirement_mm, a.water_deficit_mm, a.water_to_apply_mm]
-                      .map(escCsv).join(',')
-                    ).join('\n');
-                    const blob = new Blob([headers + csv], { type: 'text/csv' });
-                    const url = window.URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = `irrigation_advisories_${new Date().toISOString().split('T')[0]}.csv`;
-                    a.click();
-                  }}
-                  >
-                    📥 Export CSV
-                  </button>
-                </div>
+              <div className="card-header" style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                <span className="card-title">🚰 Canal Command Distributary Advisory (PMKSY Planning)</span>
+                <span className="badge badge-blue">Canal Gate Controller Strategy</span>
               </div>
               <div className="card-body" style={{ padding:0, overflowX:'auto' }}>
                 <table className="data-table">
-                  <caption className="sr-only">Field irrigation advisory table sorted by urgency</caption>
+                  <caption className="sr-only">Command area canal distributary advisory table</caption>
                   <thead>
                     <tr>
-                      <th scope="col">Field</th>
-                      <th scope="col">Crop</th>
-                      <th scope="col">Soil Type</th>
-                      <th scope="col">Stage</th>
-                      <th scope="col">VCI</th>
-                      <th scope="col">Stress</th>
-                      <th scope="col">Rainfall (mm)</th>
-                      <th scope="col">ETc (mm)</th>
-                      <th scope="col">Deficit (mm)</th>
-                      <th scope="col">Apply (mm)</th>
-                      <th scope="col">Action</th>
+                      <th scope="col">Command Distributary</th>
+                      <th scope="col" style={{ textAlign:'center' }}>Monitored Fields</th>
+                      <th scope="col" style={{ textAlign:'center' }}>Critical Alerts</th>
+                      <th scope="col" style={{ textAlign:'center' }}>Average VCI</th>
+                      <th scope="col" style={{ textAlign:'center' }}>Total Crop Demand (mm)</th>
+                      <th scope="col" style={{ textAlign:'center' }}>Total Deficit (mm)</th>
+                      <th scope="col">Recommended Discharge</th>
+                      <th scope="col">Gate Controller Action</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {filtered.map(a => (
-                      <tr key={a.field_id}>
-                        <td><strong style={{ color:'var(--green-400)', fontFamily:'var(--font-mono)' }}>{a.field_id}</strong></td>
-                        <td>{a.crop}</td>
-                        <td><span style={{ fontSize:11, color:'var(--blue-400)' }}>{a.soil_type || 'Loam'}</span></td>
-                        <td><span style={{ fontSize:11, color:'var(--text-muted)' }}>{a.growth_stage}</span></td>
-                        <td><span style={{ fontFamily:'var(--font-mono)', color: a.advisory_color }}>{a.vci}</span></td>
-                        <td><span className={`badge badge-${a.priority?.toLowerCase()}`}>{a.stress_level}</span></td>
-                        <td style={{ fontFamily:'var(--font-mono)' }}>{a.rainfall_mm}</td>
-                        <td style={{ fontFamily:'var(--font-mono)' }}>{a.crop_water_requirement_mm}</td>
-                        <td style={{ fontFamily:'var(--font-mono)', color: a.water_deficit_mm > 0 ? '#ef4444' : '#22c55e' }}>
-                          {a.water_deficit_mm}
+                    {commandData.map(c => (
+                      <tr key={c.command_area}>
+                        <td><strong style={{ color:'var(--blue-400)' }}>{c.command_area}</strong></td>
+                        <td style={{ textAlign:'center', fontFamily:'var(--font-mono)' }}>{c.total_fields_monitored}</td>
+                        <td style={{ textAlign:'center' }}>
+                          <span className={c.critical_fields > 0 ? 'badge badge-critical' : 'badge badge-ok'}>
+                            {c.critical_fields}
+                          </span>
                         </td>
-                        <td style={{ fontFamily:'var(--font-mono)', color:'var(--green-400)', fontWeight:600 }}>
-                          {a.water_to_apply_mm}
+                        <td style={{ textAlign:'center', fontFamily:'var(--font-mono)' }}>{c.average_vci}%</td>
+                        <td style={{ textAlign:'center', fontFamily:'var(--font-mono)' }}>{c.total_crop_demand_mm}</td>
+                        <td style={{ textAlign:'center', fontFamily:'var(--font-mono)', color: c.total_deficit_mm > 0 ? '#ef4444' : '#10b981' }}>
+                          {c.total_deficit_mm}
                         </td>
                         <td>
-                          <div style={{ fontSize:11, color: a.advisory_color, fontWeight:500, maxWidth:160 }}>
-                            {a.urgency === 'NONE' ? '✅ No action' : `⏱ ${a.within_days}d`}
+                          <span className="badge" style={{ background: c.color+'22', color: c.color, fontWeight:700 }}>
+                            {c.discharge_recommendation}
+                          </span>
+                        </td>
+                        <td>
+                          <div style={{ fontSize:11, color:'var(--navy-300)' }}>
+                            {c.gate_action}
                           </div>
                         </td>
                       </tr>
@@ -320,8 +294,98 @@ export default function IrrigationAdvisory() {
               </div>
             </div>
           </div>
-        </>
-      )}
+        )}
+
+        {/* Advisory Table */}
+        <div style={{ padding:'0 24px 28px' }}>
+          <div className="card">
+            <div className="card-header">
+              <span className="card-title">Field Advisory Table</span>
+              <div style={{ display:'flex', gap:6 }}>
+                {['ALL', 'CRITICAL', 'HIGH', 'MEDIUM'].map(f => (
+                  <button
+                    key={f}
+                    className={`btn btn-ghost ${filter === f ? 'active' : ''}`}
+                    onClick={() => setFilter(f)}
+                    aria-label={`Show ${f} priority advisories`}
+                    aria-pressed={filter === f}
+                  >
+                    {f}
+                  </button>
+                ))}
+                <button
+                  className="btn btn-primary"
+                  aria-label="Export filtered advisories as CSV file"
+                  style={{ marginLeft: 12 }}
+                  onClick={() => {
+                  const headers = "Field,Crop,Soil,Stage,VCI,Stress,Rainfall(mm),ETc(mm),Deficit(mm),Apply(mm)\n";
+                  const escCsv = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
+                  const csv = filtered.map(a =>
+                    [a.field_id, a.crop, a.soil_type || 'Loam', a.growth_stage,
+                     a.vci, a.stress_level, a.rainfall_mm,
+                     a.crop_water_requirement_mm, a.water_deficit_mm, a.water_to_apply_mm]
+                    .map(escCsv).join(',')
+                  ).join('\n');
+                  const blob = new Blob([headers + csv], { type: 'text/csv' });
+                  const url = window.URL.createObjectURL(blob);
+                  const a = document.createElement('a');
+                  a.href = url;
+                  a.download = `irrigation_advisories_${new Date().toISOString().split('T')[0]}.csv`;
+                  a.click();
+                }}
+                >
+                  📥 Export CSV
+                </button>
+              </div>
+            </div>
+            <div className="card-body" style={{ padding:0, overflowX:'auto' }}>
+              <table className="data-table">
+                <caption className="sr-only">Field irrigation advisory table sorted by urgency</caption>
+                <thead>
+                  <tr>
+                    <th scope="col">Field</th>
+                    <th scope="col">Crop</th>
+                    <th scope="col">Soil Type</th>
+                    <th scope="col">Stage</th>
+                    <th scope="col">VCI</th>
+                    <th scope="col">Stress</th>
+                    <th scope="col">Rainfall (mm)</th>
+                    <th scope="col">ETc (mm)</th>
+                    <th scope="col">Deficit (mm)</th>
+                    <th scope="col">Apply (mm)</th>
+                    <th scope="col">Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtered.map(a => (
+                    <tr key={a.field_id}>
+                      <td><strong style={{ color:'var(--blue-400)', fontFamily:'var(--font-mono)' }}>{a.field_id}</strong></td>
+                      <td>{a.crop}</td>
+                      <td><span style={{ fontSize:11, color:'var(--navy-300)' }}>{a.soil_type || 'Loam'}</span></td>
+                      <td><span style={{ fontSize:11, color:'var(--navy-400)' }}>{a.growth_stage}</span></td>
+                      <td><span style={{ fontFamily:'var(--font-mono)', color: a.advisory_color }}>{a.vci}</span></td>
+                      <td><span className={`badge badge-${a.priority?.toLowerCase()}`}>{a.stress_level}</span></td>
+                      <td style={{ fontFamily:'var(--font-mono)' }}>{a.rainfall_mm}</td>
+                      <td style={{ fontFamily:'var(--font-mono)' }}>{a.crop_water_requirement_mm}</td>
+                      <td style={{ fontFamily:'var(--font-mono)', color: a.water_deficit_mm > 0 ? '#ef4444' : '#10b981' }}>
+                        {a.water_deficit_mm}
+                      </td>
+                      <td style={{ fontFamily:'var(--font-mono)', color:'var(--blue-400)', fontWeight:600 }}>
+                        {a.water_to_apply_mm}
+                      </td>
+                      <td>
+                        <div style={{ fontSize:11, color: a.advisory_color, fontWeight:500, maxWidth:160 }}>
+                          {a.urgency === 'NONE' ? '✅ No action' : `⏱ ${a.within_days}d`}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </>
     </div>
   )
 }
