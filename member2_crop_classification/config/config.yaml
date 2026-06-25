@@ -105,11 +105,11 @@ model:
     random_state: 42
 
 evaluation:
-  # TODO: Replace placeholder crop names with the official dataset mapping.
   class_names:
-    "1": Crop_1
-    "2": Crop_2
-    "3": Crop_3
+    "1": Rice
+    "2": Maize
+    "3": Sugarcane
+    "4": Others
 
 inference:
   prediction_chunk_size: 250000
@@ -118,4 +118,3 @@ inference:
 logging:
   level: INFO
   file: training.log
-

@@ -7,6 +7,7 @@ import time
 from pathlib import Path
 from typing import Any, Mapping
 
+import joblib
 import numpy as np
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import GridSearchCV
@@ -46,6 +47,16 @@ except ImportError:  # pragma: no cover - supports direct script execution.
         timestamp_utc,
     )
     from visualize import plot_class_distribution, plot_feature_importance
+
+
+CROP_CLASSES = {1: "Rice", 2: "Maize", 3: "Sugarcane", 4: "Others"}
+CROP_COLORS = {
+    "Rice": "#22c55e",
+    "Maize": "#eab308",
+    "Sugarcane": "#3b82f6",
+    "Others": "#f97316",
+}
+DEFAULT_MODEL_SAVE_PATH = Path(__file__).resolve().parents[1] / "models" / "rf_model.joblib"
 
 
 def create_random_forest_pipeline(
@@ -226,13 +237,39 @@ def _resolve_cv_folds(target: np.ndarray, requested_cv: int) -> int:
     return cv_folds
 
 
+def save_model(model: object, path: Path | str) -> Path:
+    """Save a trained model with joblib and return the destination path."""
+
+    output_path = Path(path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    joblib.dump(model, output_path)
+    size_kb = output_path.stat().st_size / 1024
+    print(f"Saved model to {output_path} ({size_kb:.1f} KB)")
+    return output_path
+
+
+def load_model(path: Path | str) -> object:
+    """Load a joblib model, raising a helpful error when it is missing."""
+
+    model_path = Path(path)
+    if not model_path.exists():
+        raise FileNotFoundError(
+            f"Random Forest model not found at {model_path}. "
+            "Run member2_crop_classification/scripts/train_rf.py first."
+        )
+    return joblib.load(model_path)
+
+
 def main() -> None:
     """CLI entrypoint for Random Forest training."""
 
     parser = argparse.ArgumentParser(description="Train Member 2 Random Forest model.")
     parser.add_argument("--config", default=None, help="Path to YAML config file.")
     args = parser.parse_args()
-    train_random_forest(args.config)
+    results = train_random_forest(args.config)
+    save_model(results["model"], DEFAULT_MODEL_SAVE_PATH)
+    accuracy = float(results["metrics"].get("overall_accuracy", 0.0))
+    print(f"Model saved. Accuracy: {accuracy:.4f}")
 
 
 if __name__ == "__main__":

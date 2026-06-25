@@ -210,23 +210,27 @@ def generate_realistic_features(
     return pd.DataFrame(rows)
 
 
-def train_and_evaluate(df: pd.DataFrame) -> tuple:
-    """Train RF and XGBoost models, returning (clf_rf, clf_xgb, combined_metrics_dict)."""
+def train_and_evaluate(df: pd.DataFrame, *, run_cv: bool = False) -> tuple:
+    """Train RF and XGBoost models, returning (clf_rf, clf_xgb, combined_metrics_dict).
+
+    Parameters
+    ----------
+    df:
+        Training dataframe with FEATURE_COLS and crop_class column.
+    run_cv:
+        When True, run expensive 5-fold stratified CV for competition-quality
+        accuracy reporting. Defaults to False so API calls (~5s) skip CV.
+        The __main__ block passes run_cv=True for full evaluation.
+    """
     X = df[FEATURE_COLS].fillna(0)
     y = df["crop_class"]
 
-    # 5-fold stratified CV partition
+    # 5-fold stratified CV partition (only created when needed)
     skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
 
     # ──────────────────────────────────────────────────────────────────────────
     # 1. EVALUATE RANDOM FOREST
     # ──────────────────────────────────────────────────────────────────────────
-    clf_rf_cv = RandomForestClassifier(
-        n_estimators=300, max_depth=15, min_samples_leaf=1,
-        random_state=42, n_jobs=-1
-    )
-    cv_scores_rf = cross_val_score(clf_rf_cv, X, y, cv=skf, scoring="accuracy")
-
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, test_size=0.2, random_state=42, stratify=y
     )
@@ -237,6 +241,21 @@ def train_and_evaluate(df: pd.DataFrame) -> tuple:
     )
     clf_rf.fit(X_train, y_train)
     y_pred_rf = clf_rf.predict(X_test)
+    test_accuracy_rf = round(float(accuracy_score(y_test, y_pred_rf)) * 100, 2)
+
+    if run_cv:
+        clf_rf_cv = RandomForestClassifier(
+            n_estimators=300, max_depth=15, min_samples_leaf=1,
+            random_state=42, n_jobs=-1
+        )
+        cv_scores_rf = cross_val_score(clf_rf_cv, X, y, cv=skf, scoring="accuracy")
+        rf_accuracy     = round(float(cv_scores_rf.mean()) * 100, 2)
+        rf_accuracy_std = round(float(cv_scores_rf.std()) * 100, 2)
+        rf_cv_scores    = [round(s * 100, 2) for s in cv_scores_rf.tolist()]
+    else:
+        rf_accuracy     = test_accuracy_rf
+        rf_accuracy_std = 0.0
+        rf_cv_scores    = []
 
     rf_fi = clf_rf.feature_importances_
     rf_fi_dict = dict(sorted(
@@ -245,9 +264,9 @@ def train_and_evaluate(df: pd.DataFrame) -> tuple:
     ))
 
     rf_metrics = {
-        "accuracy":              round(float(cv_scores_rf.mean()) * 100, 2),
-        "accuracy_std":          round(float(cv_scores_rf.std()) * 100, 2),
-        "test_accuracy":         round(float(accuracy_score(y_test, y_pred_rf)) * 100, 2),
+        "accuracy":              rf_accuracy,
+        "accuracy_std":          rf_accuracy_std,
+        "test_accuracy":         test_accuracy_rf,
         "kappa_coefficient":     round(float(cohen_kappa_score(y_test, y_pred_rf)), 4),
         "precision":             round(float(precision_score(y_test, y_pred_rf, average="weighted", zero_division=0)) * 100, 2),
         "recall":                round(float(recall_score(y_test, y_pred_rf, average="weighted", zero_division=0)) * 100, 2),
@@ -258,19 +277,13 @@ def train_and_evaluate(df: pd.DataFrame) -> tuple:
             target_names=[CROP_CLASSES[i] for i in sorted(CROP_CLASSES)]
         ),
         "feature_importances":   rf_fi_dict,
-        "cv_scores":             [round(s * 100, 2) for s in cv_scores_rf.tolist()],
+        "cv_scores":             rf_cv_scores,
     }
 
     # ──────────────────────────────────────────────────────────────────────────
     # 2. EVALUATE XGBOOST (expects 0-indexed classes: y - 1)
     # ──────────────────────────────────────────────────────────────────────────
-    y_xgb = y - 1
-    clf_xgb_cv = XGBClassifier(
-        n_estimators=200, max_depth=10, learning_rate=0.1, subsample=0.8,
-        random_state=42, n_jobs=-1, eval_metric="mlogloss"
-    )
-    cv_scores_xgb = cross_val_score(clf_xgb_cv, X, y_xgb, cv=skf, scoring="accuracy")
-
+    y_xgb     = y - 1
     y_train_xgb = y_train - 1
 
     clf_xgb = XGBClassifier(
@@ -279,7 +292,22 @@ def train_and_evaluate(df: pd.DataFrame) -> tuple:
     )
     clf_xgb.fit(X_train, y_train_xgb)
     y_pred_xgb_raw = clf_xgb.predict(X_test)
-    y_pred_xgb = y_pred_xgb_raw + 1  # map back to [1, 2, 3, 4]
+    y_pred_xgb     = y_pred_xgb_raw + 1  # map back to [1, 2, 3, 4]
+    test_accuracy_xgb = round(float(accuracy_score(y_test, y_pred_xgb)) * 100, 2)
+
+    if run_cv:
+        clf_xgb_cv = XGBClassifier(
+            n_estimators=200, max_depth=10, learning_rate=0.1, subsample=0.8,
+            random_state=42, n_jobs=-1, eval_metric="mlogloss"
+        )
+        cv_scores_xgb    = cross_val_score(clf_xgb_cv, X, y_xgb, cv=skf, scoring="accuracy")
+        xgb_accuracy     = round(float(cv_scores_xgb.mean()) * 100, 2)
+        xgb_accuracy_std = round(float(cv_scores_xgb.std()) * 100, 2)
+        xgb_cv_scores    = [round(s * 100, 2) for s in cv_scores_xgb.tolist()]
+    else:
+        xgb_accuracy     = test_accuracy_xgb
+        xgb_accuracy_std = 0.0
+        xgb_cv_scores    = []
 
     xgb_fi = clf_xgb.feature_importances_
     xgb_fi_dict = dict(sorted(
@@ -288,9 +316,9 @@ def train_and_evaluate(df: pd.DataFrame) -> tuple:
     ))
 
     xgb_metrics = {
-        "accuracy":              round(float(cv_scores_xgb.mean()) * 100, 2),
-        "accuracy_std":          round(float(cv_scores_xgb.std()) * 100, 2),
-        "test_accuracy":         round(float(accuracy_score(y_test, y_pred_xgb)) * 100, 2),
+        "accuracy":              xgb_accuracy,
+        "accuracy_std":          xgb_accuracy_std,
+        "test_accuracy":         test_accuracy_xgb,
         "kappa_coefficient":     round(float(cohen_kappa_score(y_test, y_pred_xgb)), 4),
         "precision":             round(float(precision_score(y_test, y_pred_xgb, average="weighted", zero_division=0)) * 100, 2),
         "recall":                round(float(recall_score(y_test, y_pred_xgb, average="weighted", zero_division=0)) * 100, 2),
@@ -301,7 +329,7 @@ def train_and_evaluate(df: pd.DataFrame) -> tuple:
             target_names=[CROP_CLASSES[i] for i in sorted(CROP_CLASSES)]
         ),
         "feature_importances":   xgb_fi_dict,
-        "cv_scores":             [round(s * 100, 2) for s in cv_scores_xgb.tolist()],
+        "cv_scores":             xgb_cv_scores,
     }
 
     combined_metrics = {
@@ -343,7 +371,7 @@ if __name__ == "__main__":
     print(f"Class balance: {df['crop_class'].value_counts().to_dict()}")
 
     print("\nTraining and evaluating both models (Random Forest & XGBoost)...")
-    clf_rf, clf_xgb, metrics = train_and_evaluate(df)
+    clf_rf, clf_xgb, metrics = train_and_evaluate(df, run_cv=True)
 
     print(f"\nRandom Forest 5-Fold CV Accuracy: {metrics['rf']['accuracy']:.2f}% +/- {metrics['rf']['accuracy_std']:.2f}%")
     print(f"Random Forest Kappa             : {metrics['rf']['kappa_coefficient']:.4f}")

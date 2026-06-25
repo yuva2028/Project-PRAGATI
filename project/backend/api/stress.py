@@ -2,11 +2,17 @@
 API Router: Moisture Stress Detection
 GET /api/stress-map
 GET /api/stress-tile
+GET /api/stress-geojson
 GET /api/stress-stats
 GET /api/phenology
 """
 
 from fastapi import APIRouter, HTTPException
+
+try:
+    from project.backend.utils.ndvi_series import generate_synthetic_ndvi_series, get_phenology_metrics
+except ImportError:
+    from backend.utils.ndvi_series import generate_synthetic_ndvi_series, get_phenology_metrics
 
 router = APIRouter()
 
@@ -98,6 +104,61 @@ async def get_stress_tile():
     }
 
 
+@router.get("/stress-geojson")
+async def get_stress_geojson():
+    """
+    Returns moisture stress as GeoJSON FeatureCollection for Leaflet rendering.
+    Uses VCI computed per ground-truth point with synthetic but reproducible values.
+    """
+    from pathlib import Path
+    import pandas as pd
+    import numpy as np
+    from ml.moisture_model import compute_pixel_stress
+
+    csv_path = Path(__file__).parent.parent.parent / "data" / "ground_truth.csv"
+    try:
+        df = pd.read_csv(csv_path)
+    except Exception:
+        raise HTTPException(status_code=500, detail="ground_truth.csv not found")
+
+    rng = np.random.default_rng(99)
+    features = []
+    crop_names = {1: "Rice", 2: "Maize", 3: "Sugarcane", 4: "Others"}
+    for i, row in df.iterrows():
+        ndvi_current = float(rng.uniform(0.15, 0.80))
+        ndvi_min     = max(0.05, ndvi_current - float(rng.uniform(0.05, 0.25)))
+        ndvi_max     = min(0.90, ndvi_current + float(rng.uniform(0.05, 0.25)))
+        ndwi         = float(ndvi_current - rng.uniform(0.3, 0.5))
+        vv           = float(rng.uniform(-18, -10))
+        vh           = float(rng.uniform(-24, -14))
+        stress       = compute_pixel_stress(ndvi_current, ndvi_min, ndvi_max, ndwi, vv, vh)
+        crop_name    = crop_names.get(int(row.get("crop_class", 4)), "Others")
+
+        features.append({
+            "type": "Feature",
+            "geometry": {
+                "type": "Point",
+                "coordinates": [float(row["longitude"]), float(row["latitude"])]
+            },
+            "properties": {
+                "vci":             round(stress["vci"], 1),
+                "smi":             round(stress["smi"], 1),
+                "stress_label":    stress["stress_label"],
+                "stress_color":    stress["stress_color"],
+                "stress_level":    stress["stress_level"],
+                "phenology_stage": stress["phenology_stage"],
+                "crop_name":       crop_name,
+                "ndvi":            round(ndvi_current, 3),
+            }
+        })
+
+    return {
+        "type": "FeatureCollection",
+        "features": features,
+        "metadata": {"total_points": len(features), "pilot_area": "Karnataka, India"}
+    }
+
+
 @router.get("/phenology")
 async def get_phenology():
     """Returns NDVI time series with phenology stage annotations."""
@@ -118,42 +179,9 @@ async def get_phenology():
     except Exception:
         pass
 
-    # Use the same realistic series from analytics module
-    # Generate realistic NDVI series inline (avoids circular import)
-    from datetime import datetime, timedelta
-    import math
-    base_date = datetime.now() - timedelta(days=180)
-    ndvi_pattern = [
-        0.18, 0.20, 0.22, 0.21, 0.24, 0.27, 0.31, 0.35, 0.38,
-        0.42, 0.47, 0.52, 0.57, 0.62, 0.65, 0.68, 0.70, 0.72,
-        0.71, 0.69, 0.65, 0.61, 0.57, 0.53, 0.48, 0.43, 0.38,
-        0.34, 0.31, 0.28, 0.25, 0.23, 0.22, 0.21, 0.20, 0.19,
-    ]
-    PMAP = [(0.0,0.2,"Sowing"),(0.2,0.5,"Vegetative"),(0.5,0.7,"Flowering"),(0.7,1.0,"Maturity")]
-    def _stage(ndvi):
-        for lo,hi,name in PMAP:
-            if lo <= ndvi < hi:
-                return name
-        return "Maturity"
-    series = []
-    for i, ndvi in enumerate(ndvi_pattern):
-        date = base_date + timedelta(days=i * (180 // len(ndvi_pattern)))
-        ndvi_val = round(ndvi + (math.sin(i * 0.3) * 0.01), 4)
-        vci = round(max(0, min(100, (ndvi_val - 0.18) / (0.72 - 0.18) * 100)), 1)
-        series.append({"date": date.strftime("%Y-%m-%d"), "ndvi": ndvi_val, "phenology_stage": _stage(ndvi_val), "vci": vci})
-    series = sorted(series, key=lambda x: x["date"])
-    # Compute metrics
-    ndvis = [r["ndvi"] for r in series]
-    peak_idx = int(max(range(len(ndvis)), key=lambda i: ndvis[i]))
-    sos_idx = int(min(range(peak_idx + 1), key=lambda i: ndvis[i])) if peak_idx > 0 else 0
-    try:
-        from datetime import datetime as _dt
-        sos_dt   = _dt.strptime(series[sos_idx]["date"], "%Y-%m-%d")
-        peak_dt  = _dt.strptime(series[peak_idx]["date"], "%Y-%m-%d")
-        lgp_days = (peak_dt - sos_dt).days + 30
-    except Exception:
-        lgp_days = 120
-    metrics = {"start_of_season": series[sos_idx]["date"], "peak_growth_date": series[peak_idx]["date"], "length_of_growing_period_days": lgp_days}
+    # Use the shared NDVI utility to avoid code duplication
+    series = generate_synthetic_ndvi_series()
+    metrics = get_phenology_metrics(series)
 
     return {
         "status": "success",

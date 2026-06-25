@@ -19,6 +19,9 @@ WEIGHTS_DIR = os.path.join(os.path.dirname(__file__), 'weights')
 os.makedirs(WEIGHTS_DIR, exist_ok=True)
 MODEL_PATH = os.path.join(WEIGHTS_DIR, 'lstm_vci_model.pth')
 
+# In-memory model cache — avoids re-loading weights on every API call
+_CACHED_LSTM_MODEL = None
+
 # ──────────────────────────────────────────
 # 1. Fetch REAL Data from Google Earth Engine
 # ──────────────────────────────────────────
@@ -206,21 +209,23 @@ def predict_stress_lstm(time_series):
     Predicts Moisture Stress VCI using the trained LSTM model.
     time_series: list of lists or numpy array of shape (seq_len, features)
                  e.g., 6 months of [NDVI, NDWI, Precip]
+
+    The model is cached in memory after first load to avoid repeated disk I/O.
     """
-    model = MoistureStressLSTM()
-    
-    # If model weights exist, load them. Otherwise, initialize a blank one (for fallback).
-    if os.path.exists(MODEL_PATH):
-        model.load_state_dict(torch.load(MODEL_PATH, weights_only=True))
-    model.eval()
-    
+    global _CACHED_LSTM_MODEL
+    if _CACHED_LSTM_MODEL is None:
+        _CACHED_LSTM_MODEL = MoistureStressLSTM()
+        if os.path.exists(MODEL_PATH):
+            _CACHED_LSTM_MODEL.load_state_dict(
+                torch.load(MODEL_PATH, weights_only=True, map_location="cpu")
+            )
+        _CACHED_LSTM_MODEL.eval()
+
     with torch.no_grad():
-        x_tensor = torch.tensor([time_series], dtype=torch.float32)
-        vci_pred = model(x_tensor).item()
-        
-    # Clip between 0 and 100
-    vci_pred = max(0.0, min(100.0, vci_pred))
-    return vci_pred
+        x = torch.tensor([time_series], dtype=torch.float32)
+        vci = _CACHED_LSTM_MODEL(x).item()
+
+    return float(max(0.0, min(100.0, vci)))
 
 if __name__ == '__main__':
     # Run this file to fetch data and train the model!

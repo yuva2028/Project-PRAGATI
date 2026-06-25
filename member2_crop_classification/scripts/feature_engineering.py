@@ -74,19 +74,29 @@ def calculate_evi(
     c2: float = 7.5,
     canopy_background: float = 1.0,
 ) -> np.ndarray:
-    """Calculate Enhanced Vegetation Index."""
+    """
+    Calculate Enhanced Vegetation Index.
+
+    EVI = 2.5 * (NIR - Red) / (NIR + 6*Red - 7.5*Blue + 1).
+    Sentinel-2 mapping: B2=blue, B4=red, B8=nir.
+    """
 
     blue_array = np.asarray(blue, dtype=np.float32)
     red_array = np.asarray(red, dtype=np.float32)
     nir_array = np.asarray(nir, dtype=np.float32)
-    numerator = gain * (nir_array - red_array)
     denominator = (
         nir_array
         + c1 * red_array
         - c2 * blue_array
         + canopy_background
     )
-    return safe_divide(numerator, denominator)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        result = np.where(
+            np.abs(denominator) > EPSILON,
+            gain * (nir_array - red_array) / denominator,
+            0.0,
+        )
+    return np.clip(result, -1.0, 1.0).astype(np.float32)
 
 
 def calculate_savi(
@@ -244,6 +254,74 @@ def validate_feature_dataframe(
             raise ValueError("Training requires at least two crop classes.")
 
     return features[valid_mask], target, feature_names
+
+
+def build_feature_matrix_from_arrays(
+    bands: Mapping[str, np.ndarray],
+    *,
+    include_raw_bands: bool = True,
+    include_ndvi: bool = True,
+    include_ndwi: bool = True,
+    include_evi: bool = True,
+    include_savi: bool = False,
+) -> tuple[np.ndarray, list[str]]:
+    """
+    Build a row-wise feature matrix from named raster arrays.
+
+    Parameters mirror the earlier Member 2 helper. When ``include_evi`` is
+    true, the input must include ``blue``, ``red``, and ``nir`` bands and the
+    resulting feature list includes an ``evi`` column.
+    """
+
+    indices: list[str] = []
+    if include_ndvi:
+        indices.append("ndvi")
+    if include_ndwi:
+        indices.append("ndwi")
+    if include_evi:
+        indices.append("evi")
+    if include_savi:
+        indices.append("savi")
+
+    feature_stack = build_feature_stack(
+        bands,
+        {
+            "include_raw_bands": include_raw_bands,
+            "indices": indices,
+        },
+    )
+    dataframe = flatten_feature_stack(feature_stack)
+    return dataframe.to_numpy(dtype=np.float32), list(dataframe.columns)
+
+
+def add_indices_to_dataframe(
+    dataframe: pd.DataFrame,
+    *,
+    red_col: str = "red",
+    nir_col: str = "nir",
+    green_col: str = "green",
+    blue_col: str = "blue",
+) -> pd.DataFrame:
+    """
+    Add NDVI/NDWI/EVI columns to a tabular feature dataframe when bands exist.
+
+    EVI is added only when ``blue_col`` is present, so callers with older
+    red/nir/green-only tables continue to work.
+    """
+
+    result = dataframe.copy()
+    if {red_col, nir_col}.issubset(result.columns):
+        result["ndvi"] = calculate_ndvi(result[red_col], result[nir_col])
+        result["savi"] = calculate_savi(result[red_col], result[nir_col])
+    if {green_col, nir_col}.issubset(result.columns):
+        result["ndwi"] = calculate_ndwi(result[green_col], result[nir_col])
+    if {blue_col, red_col, nir_col}.issubset(result.columns):
+        result["evi"] = calculate_evi(
+            result[blue_col],
+            result[red_col],
+            result[nir_col],
+        )
+    return result
 
 
 def _validate_band_shapes(bands: Mapping[str, np.ndarray]) -> None:

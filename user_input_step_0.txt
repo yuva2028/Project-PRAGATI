@@ -1,0 +1,59 @@
+<USER_REQUEST>
+You are a senior full-stack engineer fixing Project PRAGATI, an ISRO Hackathon remote sensing prototype. Your job is to fix ALL issues identified in a code audit and maximize scores across: Code Quality, Security, Efficiency, Testing, Accessibility, and Problem Statement Alignment.
+
+READ EVERY FILE BEFORE EDITING IT. Never delete working logic. Use pathlib.Path for all paths.
+
+The repo root is the current working directory. All paths below are relative to it.
+
+═══════════════════════════════════════════════════════════════
+PART 1 — CRITICAL BUG FIXES (Fix these first, in order)
+═══════════════════════════════════════════════════════════════
+
+──────────────────────────────────────────
+FIX 1: member2_crop_classification/scripts/feature_engineering.py
+──────────────────────────────────────────
+1a. RENAME calculate_evi_placeholder → calculate_evi
+1b. IMPLEMENT it properly (remove the NotImplementedError):
+    EVI = 2.5 * (NIR - Red) / (NIR + 6*Red - 7.5*Blue + 1)
+    - All inputs: np.asarray(..., dtype=np.float32)
+    - Use np.where(np.abs(denom) > 1e-10, 2.5*(nir-red)/denom, 0.0)
+    - Return np.clip(result, -1.0, 1.0).astype(np.float32)
+    - Docstring: include the formula, Sentinel-2 band mapping (B2=blue, B4=red, B8=nir)
+1c. UPDATE build_feature_matrix_from_arrays():
+    - Add include_evi: bool = True parameter
+    - When include_evi=True, require bands "blue", "red", "nir" and call calculate_evi()
+    - Append result to feature_columns with name "evi"
+    - Update the docstring to document this parameter
+1d. UPDATE add_indices_to_dataframe():
+    - Add blue_col: str = "blue" parame
+<truncated 45217 bytes>
+────────
+ACC 5: project/frontend/src/pages/IrrigationAdvisory.jsx
+──────────────────────────────────────────
+5a. ADD scope="col" to ALL <th> elements in both tables
+5b. KPI priority cards that use onClick — add keyboard support:
+    ADD to each kpi-card div:
+        role="button"
+        tabIndex={0}
+        aria-label={`Filter by ${key} priority. ${priorityCounts[key] || 0} fields`}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setFilter(filter === key ? 'ALL' : key) } }}
+5c. ADD aria-label to the export CSV button:
+    aria-label="Export filtered advisories as CSV file"
+5d. ADD aria-label to filter buttons:
+    aria-label={`Show ${f} priority advisories`}
+5e. ADD <caption> to advisory table:
+    <caption className="sr-only">Field irrigation advisory table</caption>
+    ADD to your CSS (or index.css): .sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
+
+──────────────────────────────────────────
+ACC 6: project/frontend/src/pages/Analytics.jsx
+──────────────────────────────────────────
+6a. ADD scope="col" to ALL <th> in the Index Reference table
+6b. ADD aria-label to each chart wrapper:
+    NDVI chart: <div style={{height:300}} role="img" aria-label="NDVI and VCI time series line chart for Karnataka pilot area">
+    VCI bar: <div style={{height:260}} role="img" aria-label="Vegetation Condition Index stress level bar chart over time">
+    Rainfall bar: <div style={{height:260}} role="img" aria-label="Monthly CHIRPS rainfall bar chart in millimeters">
+6c. A
+<truncated 10243 bytes>
+
+NOTE: The output was truncated because it was too long. Use a more targeted query or a smaller range to get the information you need.

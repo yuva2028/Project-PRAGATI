@@ -6,26 +6,35 @@ GET /api/advisory/summary
 """
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
-from typing import Optional
+from pydantic import BaseModel, Field
+from typing import Literal, Optional
+import time as _time
 from ml.advisory_engine import (
     generate_bulk_advisories, generate_advisory, get_summary_stats,
-    compute_water_deficit, ADVISORY_RULES
+    compute_water_deficit, ADVISORY_RULES, get_command_area_advisories
 )
 from ml.moisture_model import get_stress_category
 
 router = APIRouter()
 
-# Sample fields (in production, loaded from PostGIS database)
+# Advisory cache — 5-minute TTL to avoid recomputing on every request
+_ADVISORY_CACHE: dict = {}
+_ADVISORY_TTL = 300  # seconds
+
+# Sample fields — Karnataka-only (pilot area consistency)
 SAMPLE_FIELDS = [
-    {"field_id": "F001", "crop": "Rice",      "vci": 12, "stage": "Vegetative", "rainfall_mm": 5,  "lat": 30.9, "lng": 75.8}, # Punjab
-    {"field_id": "F002", "crop": "Maize",     "vci": 28, "stage": "Flowering",  "rainfall_mm": 15, "lat": 26.8, "lng": 80.9}, # UP
-    {"field_id": "F003", "crop": "Sugarcane", "vci": 45, "stage": "Vegetative", "rainfall_mm": 30, "lat": 19.7, "lng": 75.7}, # Maharashtra
-    {"field_id": "F004", "crop": "Rice",      "vci": 65, "stage": "Maturity",   "rainfall_mm": 50, "lat": 22.9, "lng": 87.8}, # WB
-    {"field_id": "F005", "crop": "Maize",     "vci": 18, "stage": "Sowing",     "rainfall_mm": 3,  "lat": 23.2, "lng": 77.4}, # MP
-    {"field_id": "F006", "crop": "Sugarcane", "vci": 82, "stage": "Maturity",   "rainfall_mm": 70, "lat": 15.9, "lng": 79.9}, # AP
-    {"field_id": "F007", "crop": "Others",    "vci": 35, "stage": "Vegetative", "rainfall_mm": 20, "lat": 22.2, "lng": 71.1}, # Gujarat
-    {"field_id": "F008", "crop": "Rice",      "vci": 90, "stage": "Flowering",  "rainfall_mm": 80, "lat": 15.3, "lng": 75.7}, # Karnataka
+    {"field_id": "KAR-F001", "crop": "Rice",      "vci": 12,  "stage": "Vegetative", "rainfall_mm": 5,  "lat": 15.30, "lng": 75.71},
+    {"field_id": "KAR-F002", "crop": "Sugarcane", "vci": 28,  "stage": "Flowering",  "rainfall_mm": 15, "lat": 15.45, "lng": 76.10},
+    {"field_id": "KAR-F003", "crop": "Rice",      "vci": 45,  "stage": "Vegetative", "rainfall_mm": 30, "lat": 14.67, "lng": 76.82},
+    {"field_id": "KAR-F004", "crop": "Maize",     "vci": 65,  "stage": "Maturity",   "rainfall_mm": 50, "lat": 13.00, "lng": 77.57},
+    {"field_id": "KAR-F005", "crop": "Sugarcane", "vci": 18,  "stage": "Sowing",     "rainfall_mm": 3,  "lat": 15.85, "lng": 74.50},
+    {"field_id": "KAR-F006", "crop": "Rice",      "vci": 82,  "stage": "Maturity",   "rainfall_mm": 70, "lat": 12.97, "lng": 77.59},
+    {"field_id": "KAR-F007", "crop": "Others",    "vci": 35,  "stage": "Vegetative", "rainfall_mm": 20, "lat": 15.34, "lng": 75.13},
+    {"field_id": "KAR-F008", "crop": "Maize",     "vci": 90,  "stage": "Flowering",  "rainfall_mm": 80, "lat": 16.83, "lng": 74.49},
+    {"field_id": "KAR-F009", "crop": "Rice",      "vci": 22,  "stage": "Vegetative", "rainfall_mm": 8,  "lat": 14.22, "lng": 76.40},
+    {"field_id": "KAR-F010", "crop": "Sugarcane", "vci": 55,  "stage": "Vegetative", "rainfall_mm": 35, "lat": 16.20, "lng": 74.78},
+    {"field_id": "KAR-F011", "crop": "Maize",     "vci": 7,   "stage": "Flowering",  "rainfall_mm": 2,  "lat": 13.34, "lng": 77.10},
+    {"field_id": "KAR-F012", "crop": "Rice",      "vci": 72,  "stage": "Maturity",   "rainfall_mm": 60, "lat": 12.30, "lng": 76.65},
 ]
 
 
@@ -33,6 +42,11 @@ SAMPLE_FIELDS = [
 async def get_advisory():
     """Returns field-level irrigation advisories for all registered fields."""
     try:
+        # Serve from cache when fresh
+        cached = _ADVISORY_CACHE.get("advisories")
+        if cached and (_time.time() - _ADVISORY_CACHE.get("ts", 0)) < _ADVISORY_TTL:
+            return cached
+
         advisories = generate_bulk_advisories(SAMPLE_FIELDS)
         # Add coordinates for map visualization
         field_coords = {f["field_id"]: {"lat": f["lat"], "lng": f["lng"]} for f in SAMPLE_FIELDS}
@@ -41,13 +55,16 @@ async def get_advisory():
             a["lat"] = coords.get("lat")
             a["lng"] = coords.get("lng")
 
-        return {
+        result = {
             "status": "success",
-            "pilot_area": "India",
+            "pilot_area": "Karnataka, India",
             "total_fields": len(advisories),
             "advisories": advisories,
             "advisory_rules": ADVISORY_RULES
         }
+        _ADVISORY_CACHE["advisories"] = result
+        _ADVISORY_CACHE["ts"] = _time.time()
+        return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -56,19 +73,26 @@ async def get_advisory():
 async def get_advisory_summary():
     """Returns summary statistics for the home dashboard."""
     try:
-        advisories = generate_bulk_advisories(SAMPLE_FIELDS)
+        # Reuse cached advisories if available
+        cached = _ADVISORY_CACHE.get("advisories")
+        if cached and (_time.time() - _ADVISORY_CACHE.get("ts", 0)) < _ADVISORY_TTL:
+            advisories = cached["advisories"]
+        else:
+            advisories = generate_bulk_advisories(SAMPLE_FIELDS)
         summary = get_summary_stats(advisories)
         return {"status": "success", **summary}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
+
 class FieldInput(BaseModel):
-    field_id: str
-    crop: str
-    vci: float
-    stage: str
-    rainfall_mm: float
+    field_id:    str   = Field(..., min_length=1, max_length=20)
+    crop:        Literal["Rice", "Maize", "Sugarcane", "Others"]
+    vci:         float = Field(..., ge=0.0, le=100.0)
+    stage:       Literal["Sowing", "Vegetative", "Flowering", "Maturity"]
+    rainfall_mm: float = Field(..., ge=0.0, le=2000.0)
+
 
 @router.post("/advisory/field")
 async def get_field_advisory(field: FieldInput):

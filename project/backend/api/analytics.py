@@ -10,82 +10,12 @@ from fastapi import APIRouter, HTTPException
 from datetime import datetime, timedelta
 import math
 
+try:
+    from project.backend.utils.ndvi_series import generate_synthetic_ndvi_series, get_phenology_metrics
+except ImportError:
+    from backend.utils.ndvi_series import generate_synthetic_ndvi_series, get_phenology_metrics
+
 router = APIRouter()
-
-# ──────────────────────────────────────────
-# Realistic synthetic NDVI based on India's Kharif (June-Nov) + Rabi (Nov-Mar)
-# Values derived from published MODIS/Sentinel-2 seasonal studies for India
-# ──────────────────────────────────────────
-def _generate_ndvi_series():
-    """
-    Generates realistic India-wide NDVI time series for the past 6 months.
-    Based on typical Kharif crop (Rice, Maize, Cotton) phenology:
-    - Low NDVI in May-June (dry/fallow / early sowing)
-    - Peak NDVI in August-September (vegetative / flowering)
-    - Decline in October-November (maturity / harvest)
-    """
-    base_date = datetime.now() - timedelta(days=180)
-    # Real-world NDVI pattern for India agricultural areas (mean across pixels)
-    # Source: Typical Sentinel-2 composites for Kharif season
-    ndvi_pattern = [
-        0.18, 0.20, 0.22, 0.21, 0.24, 0.27, 0.31, 0.35, 0.38,
-        0.42, 0.47, 0.52, 0.57, 0.62, 0.65, 0.68, 0.70, 0.72,
-        0.71, 0.69, 0.65, 0.61, 0.57, 0.53, 0.48, 0.43, 0.38,
-        0.34, 0.31, 0.28, 0.25, 0.23, 0.22, 0.21, 0.20, 0.19,
-        0.21, 0.24, 0.27, 0.30, 0.33, 0.36, 0.39, 0.43, 0.47,
-        0.50, 0.53, 0.55, 0.57, 0.59, 0.60, 0.61, 0.60, 0.58,
-        0.55, 0.52, 0.49, 0.46, 0.43, 0.40, 0.37, 0.34, 0.32,
-        0.30, 0.28, 0.27, 0.26, 0.25, 0.24, 0.23, 0.22, 0.21,
-    ]
-
-    results = []
-    PHENOLOGY_MAP = [
-        (0.0,  0.2,  "Sowing"),
-        (0.2,  0.5,  "Vegetative"),
-        (0.5,  0.7,  "Flowering"),
-        (0.7,  1.0,  "Maturity"),
-    ]
-
-    def get_stage(ndvi):
-        for lo, hi, name in PHENOLOGY_MAP:
-            if lo <= ndvi < hi:
-                return name
-        return "Maturity"
-
-    for i, ndvi in enumerate(ndvi_pattern):
-        date = base_date + timedelta(days=i * (180 // len(ndvi_pattern)))
-        # Add slight noise for realism
-        ndvi_val = round(ndvi + (math.sin(i * 0.3) * 0.01), 4)
-        vci = round(max(0, min(100, (ndvi_val - 0.18) / (0.72 - 0.18) * 100)), 1)
-        results.append({
-            "date": date.strftime("%Y-%m-%d"),
-            "ndvi": ndvi_val,
-            "phenology_stage": get_stage(ndvi_val),
-            "vci": vci,
-        })
-
-    return sorted(results, key=lambda x: x["date"])
-
-
-def _get_phenology_metrics(series):
-    if len(series) < 3:
-        return {}
-    ndvis = [r["ndvi"] for r in series]
-    peak_idx = int(max(range(len(ndvis)), key=lambda i: ndvis[i]))
-    peak_date = series[peak_idx]["date"]
-    sos_idx = int(min(range(peak_idx + 1), key=lambda i: ndvis[i])) if peak_idx > 0 else 0
-    sos_date = series[sos_idx]["date"]
-    try:
-        sos_dt   = datetime.strptime(sos_date, "%Y-%m-%d")
-        peak_dt  = datetime.strptime(peak_date, "%Y-%m-%d")
-        lgp_days = (peak_dt - sos_dt).days + 30
-    except Exception:
-        lgp_days = 120
-    return {
-        "start_of_season": sos_date,
-        "peak_growth_date": peak_date,
-        "length_of_growing_period_days": lgp_days,
-    }
 
 
 @router.get("/ndvi")
@@ -105,8 +35,8 @@ async def get_ndvi_series():
         pass
 
     # Realistic synthetic fallback — no empty data
-    series = _generate_ndvi_series()
-    metrics = _get_phenology_metrics(series)
+    series = generate_synthetic_ndvi_series()
+    metrics = get_phenology_metrics(series)
     return {
         "status": "success",
         "source": "Sentinel-2 | India Kharif/Rabi Season Model",
@@ -200,9 +130,9 @@ async def get_analytics():
         pass
 
     if not ndvi_data:
-        series       = _generate_ndvi_series()
-        ndvi_data    = series
-        pheno_metrics = _get_phenology_metrics(series)
+        series        = generate_synthetic_ndvi_series()
+        ndvi_data     = series
+        pheno_metrics = get_phenology_metrics(series)
 
     try:
         from gee.weather import get_rainfall_stats
