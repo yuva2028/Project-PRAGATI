@@ -6,9 +6,10 @@ Sources: CHIRPS Rainfall, ERA5 Temperature, FAO Evapotranspiration
 import ee
 from gee.sentinel2 import get_roi, get_date_range
 
-def get_chirps_rainfall(months_back: int = 6):
+def get_chirps_rainfall(months_back: int = 6, roi = None):
     """Fetch CHIRPS daily rainfall and compute total over period."""
-    roi = get_roi()
+    if roi is None:
+        roi = get_roi()
     start_date, end_date = get_date_range(months_back)
 
     chirps = (
@@ -59,9 +60,12 @@ def get_rainfall_tile_url(months_back: int = 6):
     map_id = rainfall.getMapId(vis)
     return map_id['tile_fetcher'].url_format
 
-def get_rainfall_stats(months_back: int = 6):
-    roi = get_roi()
-    rainfall = get_chirps_rainfall(months_back)
+def get_rainfall_stats(months_back: int = 6, lat: float = None, lng: float = None):
+    if lat is not None and lng is not None:
+        roi = ee.Geometry.Point([lng, lat]).buffer(10000)
+    else:
+        roi = get_roi()
+    rainfall = get_chirps_rainfall(months_back, roi)
     stats = rainfall.reduceRegion(
         reducer=ee.Reducer.mean().combine(ee.Reducer.sum(), sharedInputs=True),
         geometry=roi,
@@ -70,13 +74,16 @@ def get_rainfall_stats(months_back: int = 6):
     )
     return stats.getInfo()
 
-def get_monthly_rainfall_series(months_back: int = 6):
+def get_monthly_rainfall_series(months_back: int = 6, lat: float = None, lng: float = None):
     """
     Returns monthly aggregate rainfall (mm/month) for the past N months.
     Aggregates CHIRPS daily data into calendar-month totals via ee.List loop.
     Returns a list of dicts: [{ 'date': 'YYYY-MM', 'rainfall_mm': float }, ...]
     """
-    roi = get_roi()
+    if lat is not None and lng is not None:
+        roi = ee.Geometry.Point([lng, lat]).buffer(10000)
+    else:
+        roi = get_roi()
     from datetime import datetime, timedelta
 
     results = []

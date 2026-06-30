@@ -19,7 +19,7 @@ const MODULES = [
 
     title: 'Crop Classification',
 
-    desc: 'Random Forest + XGBoost on 22-dimensional Sentinel-1/2 multi-temporal stack. GLCM texture features. >85% accuracy.',
+    desc: 'Random Forest + XGBoost on 22-dimensional Sentinel-1/2 multi-temporal stack. GLCM texture features. Evaluated against ground truth.',
 
     accent: '#3b82f6',
 

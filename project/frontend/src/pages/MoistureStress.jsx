@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
-import { useGoogleMap } from '../hooks/useGoogleMap.js'
+import { useLeafletMap } from '../hooks/useLeafletMap.js'
+import L from 'leaflet'
 import { Doughnut } from 'react-chartjs-2'
 import { Chart as ChartJS, ArcElement, Tooltip, Legend } from 'chart.js'
 import axios from 'axios'
@@ -23,7 +24,7 @@ const STRESS_ICONS = {
   'Healthy': 'OK',
 }
 
-export default function MoistureStress({ userCoords }) {
+export default function MoistureStress({ userCoords, userBbox, mapViewState, onMapChange }) {
   const [stressData,   setStressData]   = useState(null)
   const [phenology,    setPhenology]    = useState([])
   const [stressPoints, setStressPoints] = useState([])
@@ -32,16 +33,20 @@ export default function MoistureStress({ userCoords }) {
 
   const mapRef    = useRef(null)
   const circlesRef= useRef([])
-  const infoRef   = useRef(null)
 
-  const center = userCoords || { lat: 15.3, lng: 75.7 }
-  const { map, mapsApi } = useGoogleMap(mapRef, { center, zoom: 7 })
+  const center = userCoords || { lat: 20.5937, lng: 78.9629 }
+  const { map, fitBounds } = useLeafletMap(mapRef, { 
+    center, 
+    zoom: userCoords ? 10 : 5,
+    mapViewState,
+    onMapChange
+  })
 
   useEffect(() => {
     setLoading(true)
     const params = userCoords ? `?lat=${userCoords.lat}&lng=${userCoords.lng}` : ''
     Promise.all([
-      axios.get(`${API}/api/stress-map`),
+      axios.get(`${API}/api/stress-map${params}`),
       axios.get(`${API}/api/phenology`),
       axios.get(`${API}/api/stress-geojson${params}`).catch(() => null),
     ]).then(([stressRes, phenoRes, sgRes]) => {
@@ -55,67 +60,70 @@ export default function MoistureStress({ userCoords }) {
   // Pan map when userCoords change
   useEffect(() => {
     if (map && userCoords) {
-      map.panTo(userCoords);
+      if (userBbox) {
+        fitBounds(userBbox)
+      } else {
+        map.panTo([userCoords.lat, userCoords.lng])
+      }
     }
-  }, [map, userCoords])
+  }, [map, userCoords, userBbox])
 
-  // Draw stress points on Google Map
+  // Draw stress points on Leaflet Map
   useEffect(() => {
-    if (!map || !mapsApi || stressPoints.length === 0) return
-    circlesRef.current.forEach(c => c.setMap(null))
+    if (!map || stressPoints.length === 0) return
+    circlesRef.current.forEach(c => { try { map.removeLayer(c) } catch(e){} })
     circlesRef.current = []
-    if (!infoRef.current) infoRef.current = new mapsApi.InfoWindow()
 
     stressPoints.forEach(f => {
       const [lng, lat] = f.geometry.coordinates
-      const { vci, smi, stress_label, stress_color, phenology_stage, crop_name, field_id } = f.properties
-      const color = STRESS_PALETTE[stress_label]?.color || stress_color || '#60a5fa'
+      const { vci, stress_label, phenology_stage, crop_name, field_id } = f.properties
+      const color = STRESS_PALETTE[stress_label]?.color || '#60a5fa'
 
-      const circle = new mapsApi.Circle({
-        map,
-        center: { lat, lng },
+      const circle = L.circle([lat, lng], {
         radius: 5000,
+        color: '#fff',
+        weight: 1,
         fillColor: color,
         fillOpacity: 0.65,
-        strokeColor: '#fff',
-        strokeWeight: 1,
-        strokeOpacity: 0.25,
-        clickable: true,
-      })
+        opacity: 0.25,
+      }).addTo(map)
 
-      circle.addListener('click', () => {
-        infoRef.current.setContent(`
-          <div class="gmap-info">
-            <div class="gmap-info-title">${stress_label}</div>
-            <div class="gmap-info-row"><span>Crop</span><span>${crop_name}</span></div>
-            <div class="gmap-info-row"><span>Stage</span><span>${phenology_stage}</span></div>
-            <div class="gmap-info-row"><span>VCI</span><span>${vci}</span></div>
-          </div>
-        `)
-        infoRef.current.setPosition({ lat, lng })
-        infoRef.current.open(map)
+      circle.bindPopup(`
+        <div class="gmap-info">
+          <div class="gmap-info-title">${stress_label}</div>
+          <div class="gmap-info-row"><span>Crop</span><span>${crop_name}</span></div>
+          <div class="gmap-info-row"><span>Stage</span><span>${phenology_stage}</span></div>
+          <div class="gmap-info-row"><span>VCI</span><span>${vci}</span></div>
+        </div>
+      `)
+
+      circle.on('click', () => {
+        window.dispatchEvent(new CustomEvent('pragati-field-selected', {
+          detail: {
+            field_id: field_id || `STR-${lat.toFixed(2)}-${lng.toFixed(2)}`,
+            crop: crop_name,
+            vci: vci,
+            stage: phenology_stage,
+            rainfall_mm: 0
+          }
+        }))
       })
 
       circlesRef.current.push(circle)
     })
 
     if (userCoords) {
-      const userMarker = new mapsApi.Marker({
-        map,
-        position: userCoords,
-        title: 'Your location',
-        icon: {
-          path: mapsApi.SymbolPath.CIRCLE,
-          scale: 8,
-          fillColor: '#3b82f6',
-          fillOpacity: 1,
-          strokeColor: '#fff',
-          strokeWeight: 2,
-        },
-      })
+      const userMarker = L.circleMarker([userCoords.lat, userCoords.lng], {
+        radius: 8, color: '#fff', weight: 2, fillColor: '#3b82f6', fillOpacity: 1,
+      }).bindTooltip('Your location').addTo(map)
       circlesRef.current.push(userMarker)
     }
-  }, [map, mapsApi, stressPoints, userCoords])
+
+    return () => {
+      circlesRef.current.forEach(c => { try { map.removeLayer(c) } catch(e){} })
+      circlesRef.current = []
+    }
+  }, [map, stressPoints, userCoords])
 
   const distribution = stressData?.stress_distribution || {}
   const donutData = {
@@ -141,6 +149,10 @@ export default function MoistureStress({ userCoords }) {
     maintainAspectRatio: false,
   }
 
+  if (error) {
+    throw new Error(error);
+  }
+
   return (
     <div>
       <div className="page-header">
@@ -153,8 +165,6 @@ export default function MoistureStress({ userCoords }) {
           VCI from NDVI anomalies · Phenology-aware classification · Karnataka
         </p>
       </div>
-
-      {error   && <div className="error-card" role="alert">API Error: {error}</div>}
 
       <>
         {/* VCI Formula Banner */}

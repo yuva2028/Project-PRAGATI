@@ -30,18 +30,27 @@ NDVI_PATTERN = [
 ]
 
 
-def generate_synthetic_ndvi_series() -> list[dict]:
+def generate_synthetic_ndvi_series(lat: float = None, lng: float = None) -> list[dict]:
     """Realistic Karnataka Kharif/Rabi NDVI time series in a 6-month window.
 
     Returns a list of dicts with keys: date, ndvi, phenology_stage, vci.
     Based on published MODIS/Sentinel-2 seasonal studies for Indian crops.
     """
-    base_date = datetime.now() - timedelta(days=180)
+    # Create a deterministic but coordinate-dependent offset
+    offset = 0.0
+    days_shift = 0
+    if lat is not None and lng is not None:
+        # Deterministic variation using sine/cosine of coordinates
+        offset = (math.sin(lat * 50.0) + math.cos(lng * 50.0)) * 0.05
+        days_shift = int((lat * 10.0 + lng * 10.0) % 15) - 7
+
+    base_date = datetime.now() - timedelta(days=180 + days_shift)
     results = []
     for i, ndvi in enumerate(NDVI_PATTERN):
         date     = base_date + timedelta(days=i * (180 // len(NDVI_PATTERN)))
-        ndvi_val = round(ndvi + (math.sin(i * 0.3) * 0.01), 4)
-        vci      = round(max(0, min(100, (ndvi_val - 0.18) / (0.72 - 0.18) * 100)), 1)
+        # Apply coordinate offset and small periodic noise
+        ndvi_val = round(max(0.12, min(0.85, ndvi + offset + (math.sin(i * 0.3) * 0.01))), 4)
+        vci      = round(max(0.0, min(100.0, (ndvi_val - 0.18) / (0.72 - 0.18) * 100.0)), 1)
         results.append({
             "date":            date.strftime("%Y-%m-%d"),
             "ndvi":            ndvi_val,

@@ -13,6 +13,8 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader, TensorDataset
 from pathlib import Path
+from sklearn.preprocessing import MinMaxScaler
+import joblib
 
 logger = logging.getLogger(__name__)
 
@@ -20,9 +22,11 @@ logger = logging.getLogger(__name__)
 WEIGHTS_DIR = Path(__file__).resolve().parent / "weights"
 WEIGHTS_DIR.mkdir(parents=True, exist_ok=True)
 MODEL_PATH = WEIGHTS_DIR / "lstm_vci_model.pth"
+SCALER_PATH = WEIGHTS_DIR / "lstm_scaler.joblib"
 
 # In-memory model cache — avoids re-loading weights on every API call
 _LSTM_MODEL_CACHE = None
+_LSTM_SCALER_CACHE = None
 
 # ──────────────────────────────────────────
 # 1. Fetch REAL Data from Google Earth Engine
@@ -177,8 +181,18 @@ def train_lstm_model():
         logger.info("Not enough valid data fetched. Aborting training.")
         return
         
+    # Scale features
+    num_samples, seq_len, num_features = X.shape
+    X_flat = X.reshape(-1, num_features)
+    scaler = MinMaxScaler()
+    X_flat_scaled = scaler.fit_transform(X_flat)
+    X_scaled = X_flat_scaled.reshape(num_samples, seq_len, num_features)
+    
+    joblib.dump(scaler, SCALER_PATH)
+    logger.info("Saved MinMaxScaler to %s", SCALER_PATH)
+        
     # PyTorch Dataset & DataLoader
-    dataset = TensorDataset(torch.from_numpy(X), torch.from_numpy(y))
+    dataset = TensorDataset(torch.from_numpy(X_scaled), torch.from_numpy(y))
     dataloader = DataLoader(dataset, batch_size=16, shuffle=True)
     
     model = MoistureStressLSTM()
@@ -226,6 +240,7 @@ def predict_stress_lstm(time_series: list) -> float:
         float: predicted VCI score constrained to [0, 100].
     """
     global _LSTM_MODEL_CACHE
+    global _LSTM_SCALER_CACHE
     if _LSTM_MODEL_CACHE is None:
         model = MoistureStressLSTM()
         if MODEL_PATH.exists():
@@ -238,9 +253,18 @@ def predict_stress_lstm(time_series: list) -> float:
                 logger.warning("LSTM weight load failed, using untrained model: %s", e)
         model.eval()
         _LSTM_MODEL_CACHE = model
+        
+        if SCALER_PATH.exists():
+            try:
+                _LSTM_SCALER_CACHE = joblib.load(SCALER_PATH)
+            except Exception as e:
+                logger.warning("LSTM scaler load failed: %s", e)
 
     with torch.no_grad():
-        x = torch.tensor([time_series], dtype=torch.float32)
+        x_np = np.array(time_series, dtype=np.float32)
+        if _LSTM_SCALER_CACHE is not None:
+            x_np = _LSTM_SCALER_CACHE.transform(x_np)
+        x = torch.tensor([x_np], dtype=torch.float32)
         vci = float(_LSTM_MODEL_CACHE(x).item())
 
     return max(0.0, min(100.0, vci))

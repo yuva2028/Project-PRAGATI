@@ -49,28 +49,16 @@ async def get_tile(layer: LayerName):
 
     try:
         if layer_val in ("ndvi", "ndwi", "evi"):
-            try:
-                from gee.sentinel2 import get_tile_url
-            except ImportError:
-                from project.gee.sentinel2 import get_tile_url
+            from gee.sentinel2 import get_tile_url
             tile_url = get_tile_url(band=layer_val.upper(), months_back=6)
         elif layer_val in ("vv", "vh"):
-            try:
-                from gee.sentinel1 import get_sar_tile_url
-            except ImportError:
-                from project.gee.sentinel1 import get_sar_tile_url
+            from gee.sentinel1 import get_sar_tile_url
             tile_url = get_sar_tile_url(band=layer_val.upper(), months_back=6)
         elif layer_val == "stress":
-            try:
-                from project.ml.moisture_model import get_vci_tile_url
-            except ImportError:
-                from ml.moisture_model import get_vci_tile_url
+            from ml.moisture_model import get_vci_tile_url
             tile_url = get_vci_tile_url()
         elif layer_val == "rainfall":
-            try:
-                from gee.weather import get_rainfall_tile_url
-            except ImportError:
-                from project.gee.weather import get_rainfall_tile_url
+            from gee.weather import get_rainfall_tile_url
             tile_url = get_rainfall_tile_url(months_back=6)
 
         return {

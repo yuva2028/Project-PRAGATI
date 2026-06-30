@@ -1,7 +1,8 @@
 
 import { useState, useEffect, useRef } from 'react'
 
-import { useGoogleMap } from '../hooks/useGoogleMap.js'
+import { useLeafletMap } from '../hooks/useLeafletMap.js'
+import L from 'leaflet'
 
 import axios from 'axios'
 
@@ -29,7 +30,7 @@ const CLASS_NAMES = ['Rice', 'Maize', 'Sugarcane', 'Others']
 
 
 
-export default function CropMap({ userCoords }) {
+export default function CropMap({ userCoords, userBbox, mapViewState, onMapChange }) {
 
   const [cropData,   setCropData]   = useState(null)
 
@@ -53,13 +54,16 @@ export default function CropMap({ userCoords }) {
 
   const markersRef = useRef([])
 
-  const infoWindowRef = useRef(null)
 
 
+  const center = userCoords || { lat: 20.5937, lng: 78.9629 }
 
-  const center = userCoords || { lat: 15.3, lng: 75.7 }
-
-  const { map, mapsApi } = useGoogleMap(mapRef, { center, zoom: 7 })
+  const { map, fitBounds } = useLeafletMap(mapRef, { 
+    center, 
+    zoom: userCoords ? 10 : 5,
+    mapViewState,
+    onMapChange 
+  })
 
 
 
@@ -93,33 +97,29 @@ export default function CropMap({ userCoords }) {
   // Pan map when userCoords change
   useEffect(() => {
     if (map && userCoords) {
-      map.panTo(userCoords);
+      if (userBbox) {
+        fitBounds(userBbox)
+      } else {
+        map.panTo([userCoords.lat, userCoords.lng])
+      }
     }
-  }, [map, userCoords])
+  }, [map, userCoords, userBbox])
 
 
 
-  // Place markers on Google Map
+  // Place markers on Leaflet Map
 
   useEffect(() => {
 
-    if (!map || !mapsApi || cropPoints.length === 0) return
+    if (!map || cropPoints.length === 0) return
 
 
 
     // Clear old markers
 
-    markersRef.current.forEach(m => m.setMap(null))
+    markersRef.current.forEach(m => { try { map.removeLayer(m) } catch(e){} })
 
     markersRef.current = []
-
-
-
-    if (!infoWindowRef.current) {
-
-      infoWindowRef.current = new mapsApi.InfoWindow()
-
-    }
 
 
 
@@ -131,51 +131,50 @@ export default function CropMap({ userCoords }) {
 
 
 
-      const circle = new mapsApi.Circle({
-
-        map,
-
-        center: { lat: coordinates[1], lng: coordinates[0] },
+      const circle = L.circle([coordinates[1], coordinates[0]], {
 
         radius: 4000,
 
+        color: '#fff',
+        weight: 1,
+        opacity: 0.3,
         fillColor: CROP_COLORS[crop_name] || color || '#60a5fa',
 
         fillOpacity: 0.7,
 
-        strokeColor: '#fff',
-
-        strokeWeight: 1,
-
-        strokeOpacity: 0.3,
-
-        clickable: true,
-
-      })
+      }).addTo(map)
 
 
 
-      circle.addListener('click', () => {
+      circle.bindPopup(`
 
-        infoWindowRef.current.setContent(`
+        <div class="gmap-info">
 
-          <div class="gmap-info">
+          <div class="gmap-info-title">${field_id}</div>
 
-            <div class="gmap-info-title">${field_id}</div>
+          <div class="gmap-info-row"><span>Crop</span><span>${crop_name}</span></div>
 
-            <div class="gmap-info-row"><span>Crop</span><span>${crop_name}</span></div>
+          <div class="gmap-info-row"><span>Confidence</span><span>${confidence}%</span></div>
 
-            <div class="gmap-info-row"><span>Confidence</span><span>${confidence}%</span></div>
+          <div class="gmap-info-row"><span>Model</span><span>${selectedModel.toUpperCase()}</span></div>
 
-            <div class="gmap-info-row"><span>Model</span><span>${selectedModel.toUpperCase()}</span></div>
+        </div>
 
-          </div>
+      `)
 
-        `)
 
-        infoWindowRef.current.setPosition({ lat: coordinates[1], lng: coordinates[0] })
 
-        infoWindowRef.current.open(map)
+      circle.on('click', () => {
+
+        window.dispatchEvent(new CustomEvent('pragati-field-selected', {
+          detail: {
+            field_id: field_id,
+            crop: crop_name,
+            vci: 50,
+            stage: "Vegetative",
+            rainfall_mm: 0
+          }
+        }))
 
       })
 
@@ -191,37 +190,22 @@ export default function CropMap({ userCoords }) {
 
     if (userCoords) {
 
-      const userMarker = new mapsApi.Marker({
+      const userMarker = L.circleMarker([userCoords.lat, userCoords.lng], {
 
-        map,
+        radius: 8, color: '#fff', weight: 2, fillColor: '#3b82f6', fillOpacity: 1,
 
-        position: userCoords,
-
-        title: 'Your location',
-
-        icon: {
-
-          path: mapsApi.SymbolPath.CIRCLE,
-
-          scale: 8,
-
-          fillColor: '#3b82f6',
-
-          fillOpacity: 1,
-
-          strokeColor: '#fff',
-
-          strokeWeight: 2,
-
-        },
-
-      })
+      }).bindTooltip('Your location').addTo(map)
 
       markersRef.current.push(userMarker)
 
     }
 
-  }, [map, mapsApi, cropPoints, userCoords, selectedModel])
+    return () => {
+      markersRef.current.forEach(m => { try { map.removeLayer(m) } catch(e){} })
+      markersRef.current = []
+    }
+
+  }, [map, cropPoints, userCoords, selectedModel])
 
 
 
@@ -259,12 +243,26 @@ export default function CropMap({ userCoords }) {
 
 
 
+  if (loading) return (
+    <div className="flex items-center justify-center h-full w-full">
+      <div className="animate-pulse flex flex-col items-center">
+        <div className="h-12 w-12 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin mb-4"></div>
+        <div className="text-slate-500 font-medium">Fetching Earth Engine Data...</div>
+      </div>
+    </div>
+  )
+
+  if (error) {
+    throw new Error(error);
+  }
+
+  const handleFieldSelect = (id) => {
+    // optional logic
+  }
+
   return (
-
     <div>
-
       <div className="page-header">
-
         <div className="page-eyebrow">
 
           <span className="live-dot" aria-hidden="true" />

@@ -6,25 +6,42 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "vitest run"
   },
   "dependencies": {
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
-    "react-router-dom": "^6.23.1",
+    "@heroicons/react": "^2.2.0",
+    "@tailwindcss/postcss": "^4.3.2",
     "@vis.gl/react-google-maps": "^1.1.2",
-    "chart.js": "^4.4.3",
-    "react-chartjs-2": "^5.2.0",
     "axios": "^1.7.2",
-    "lucide-react": "^0.395.0",
+    "chart.js": "^4.4.3",
     "i18next": "^23.11.5",
-    "react-i18next": "^14.1.2"
+    "leaflet": "^1.9.4",
+    "lucide-react": "^0.395.0",
+    "react": "^18.3.1",
+    "react-chartjs-2": "^5.2.0",
+    "react-dom": "^18.3.1",
+    "react-i18next": "^14.1.2",
+    "react-leaflet": "^4.2.1",
+    "react-router-dom": "^6.23.1",
+    "zustand": "^5.0.14"
   },
   "devDependencies": {
+    "@testing-library/react": "^16.3.2",
     "@types/react": "^18.2.66",
     "@types/react-dom": "^18.2.22",
     "@vitejs/plugin-react": "^4.2.1",
+    "autoprefixer": "^10.5.2",
+    "eslint": "^9.39.4",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-react": "^7.37.5",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "jsdom": "^29.1.1",
+    "postcss": "^8.5.16",
+    "prettier": "^3.9.4",
+    "tailwindcss": "^4.3.2",
     "vite": "^5.2.0",
-    "vite-plugin-pwa": "^0.20.0"
+    "vite-plugin-pwa": "^0.20.0",
+    "vitest": "^4.1.9"
   }
 }

@@ -1,18 +1,18 @@
 {
   "rf": {
-    "accuracy": 95.64,
-    "accuracy_std": 1.22,
+    "accuracy": 94.55,
+    "accuracy_std": 2.71,
     "test_accuracy": 93.56,
     "kappa_coefficient": 0.9142,
-    "precision": 93.75,
+    "precision": 93.83,
     "recall": 93.56,
-    "f1_score": 93.57,
+    "f1_score": 93.61,
     "confusion_matrix": [
       [
         48,
-        2,
+        3,
         0,
-        1
+        0
       ],
       [
         4,
@@ -21,8 +21,8 @@
         1
       ],
       [
-        1,
-        4,
+        0,
+        5,
         46,
         0
       ],
@@ -33,63 +33,63 @@
         48
       ]
     ],
-    "classification_report": "              precision    recall  f1-score   support\n\n        Rice       0.91      0.94      0.92        51\n       Maize       0.89      0.90      0.90        52\n   Sugarcane       1.00      0.90      0.95        51\n      Others       0.96      1.00      0.98        48\n\n    accuracy                           0.94       202\n   macro avg       0.94      0.94      0.94       202\nweighted avg       0.94      0.94      0.94       202\n",
+    "classification_report": "              precision    recall  f1-score   support\n\n        Rice       0.92      0.94      0.93        51\n       Maize       0.85      0.90      0.88        52\n   Sugarcane       1.00      0.90      0.95        51\n      Others       0.98      1.00      0.99        48\n\n    accuracy                           0.94       202\n   macro avg       0.94      0.94      0.94       202\nweighted avg       0.94      0.94      0.94       202\n",
     "feature_importances": {
-      "NDWI_t1": 10.36,
-      "NDVI_t2": 10.32,
-      "EVI_t2": 9.04,
-      "EVI_t1": 8.29,
-      "NDWI_t2": 7.58,
-      "B8_t1": 7.06,
-      "NDVI_t1": 6.86,
-      "B4_t1": 5.21,
-      "VV_t1": 5.07,
-      "B8_t2": 4.75,
-      "B4_t2": 4.16,
-      "VV_t2": 3.81,
-      "VH_t1": 3.2,
-      "VV_contrast_t2": 2.86,
-      "B11_t1": 2.27,
-      "VH_t2": 1.89,
-      "VV_contrast_t1": 1.83,
-      "B11_t2": 1.73,
-      "VV_entropy_t2": 1.14,
-      "VH_VV_ratio_t2": 0.9,
-      "VV_entropy_t1": 0.89,
-      "VH_VV_ratio_t1": 0.76
+      "NDVI_t2": 9.85,
+      "NDWI_t1": 9.41,
+      "EVI_t2": 9.32,
+      "NDWI_t2": 8.18,
+      "EVI_t1": 7.63,
+      "B8_t1": 7.27,
+      "NDVI_t1": 6.98,
+      "B8_t2": 6.01,
+      "B4_t1": 5.64,
+      "VV_t1": 4.75,
+      "VV_t2": 4.12,
+      "B4_t2": 3.68,
+      "VV_contrast_t2": 3.02,
+      "VH_t1": 2.93,
+      "VH_t2": 2.51,
+      "B11_t1": 2.15,
+      "B11_t2": 1.77,
+      "VV_contrast_t1": 1.3,
+      "VV_entropy_t1": 1.04,
+      "VV_entropy_t2": 0.91,
+      "VH_VV_ratio_t2": 0.82,
+      "VH_VV_ratio_t1": 0.69
     },
     "cv_scores": [
-      93.56,
-      95.05,
-      96.04,
-      97.01,
-      96.52
+      89.6,
+      95.54,
+      94.06,
+      97.51,
+      96.02
     ]
   },
   "xgb": {
-    "accuracy": 94.25,
-    "accuracy_std": 2.13,
-    "test_accuracy": 92.57,
-    "kappa_coefficient": 0.901,
-    "precision": 92.65,
-    "recall": 92.57,
-    "f1_score": 92.54,
+    "accuracy": 93.95,
+    "accuracy_std": 2.53,
+    "test_accuracy": 93.07,
+    "kappa_coefficient": 0.9076,
+    "precision": 93.29,
+    "recall": 93.07,
+    "f1_score": 93.1,
     "confusion_matrix": [
       [
         48,
-        2,
+        3,
         0,
-        1
+        0
       ],
       [
         4,
-        45,
-        1,
+        46,
+        0,
         2
       ],
       [
-        1,
-        4,
+        0,
+        5,
         46,
         0
       ],
@@ -100,37 +100,37 @@
         48
       ]
     ],
-    "classification_report": "              precision    recall  f1-score   support\n\n        Rice       0.91      0.94      0.92        51\n       Maize       0.88      0.87      0.87        52\n   Sugarcane       0.98      0.90      0.94        51\n      Others       0.94      1.00      0.97        48\n\n    accuracy                           0.93       202\n   macro avg       0.93      0.93      0.93       202\nweighted avg       0.93      0.93      0.93       202\n",
+    "classification_report": "              precision    recall  f1-score   support\n\n        Rice       0.92      0.94      0.93        51\n       Maize       0.85      0.88      0.87        52\n   Sugarcane       1.00      0.90      0.95        51\n      Others       0.96      1.00      0.98        48\n\n    accuracy                           0.93       202\n   macro avg       0.93      0.93      0.93       202\nweighted avg       0.93      0.93      0.93       202\n",
     "feature_importances": {
-      "NDVI_t2": 17.8,
-      "NDWI_t1": 11.29,
-      "NDVI_t1": 9.57,
-      "EVI_t2": 8.55,
-      "EVI_t1": 6.79,
-      "B8_t1": 6.18,
-      "B8_t2": 5.85,
-      "B4_t1": 5.42,
-      "NDWI_t2": 4.57,
-      "VV_t1": 3.37,
-      "VV_t2": 3.13,
-      "VV_contrast_t2": 2.18,
-      "VH_t1": 2.09,
-      "B11_t1": 1.85,
-      "VV_entropy_t1": 1.84,
-      "B11_t2": 1.66,
-      "B4_t2": 1.65,
-      "VV_contrast_t1": 1.56,
-      "VH_VV_ratio_t1": 1.36,
-      "VH_VV_ratio_t2": 1.28,
-      "VH_t2": 1.18,
-      "VV_entropy_t2": 0.8
+      "EVI_t2": 15.01,
+      "NDVI_t2": 11.28,
+      "NDWI_t1": 10.49,
+      "NDVI_t1": 10.03,
+      "EVI_t1": 7.52,
+      "NDWI_t2": 7.22,
+      "B8_t1": 5.87,
+      "B4_t1": 5.35,
+      "B8_t2": 5.12,
+      "VV_t1": 3.21,
+      "B4_t2": 2.68,
+      "VV_contrast_t2": 2.58,
+      "VV_t2": 1.96,
+      "VH_t1": 1.9,
+      "B11_t1": 1.76,
+      "B11_t2": 1.41,
+      "VV_entropy_t1": 1.4,
+      "VH_t2": 1.37,
+      "VH_VV_ratio_t2": 1.17,
+      "VV_contrast_t1": 0.92,
+      "VH_VV_ratio_t1": 0.89,
+      "VV_entropy_t2": 0.86
     },
     "cv_scores": [
-      91.09,
-      92.57,
-      95.54,
-      97.01,
-      95.02
+      89.11,
+      95.05,
+      94.55,
+      96.52,
+      94.53
     ]
   },
   "n_train_samples": 806,

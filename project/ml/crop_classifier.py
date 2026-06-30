@@ -105,6 +105,72 @@ def get_training_samples_from_gee():
 
     return pd.DataFrame(records)
 
+def get_inference_samples_from_gee(lat: float, lng: float, num_points: int = 20) -> pd.DataFrame:
+    """
+    Sample real pixel values from GEE around a specific coordinate for inference.
+    Uses Multi-Temporal stacks (T1 and T2) of Sentinel-2 and Sentinel-1.
+    """
+    try:
+        from project.gee.sentinel2 import get_multi_temporal_stack_s2
+        from project.gee.sentinel1 import get_multi_temporal_stack_s1
+    except ImportError:
+        from gee.sentinel2 import get_multi_temporal_stack_s2
+        from gee.sentinel1 import get_multi_temporal_stack_s1
+
+    s2_stack = get_multi_temporal_stack_s2()
+    s1_stack = get_multi_temporal_stack_s1()
+    combined = s2_stack.addBands(s1_stack)
+    
+    # Create a 10km buffer around the point to sample from
+    poi = ee.Geometry.Point([lng, lat])
+    roi = poi.buffer(10000)
+    
+    # Generate random points within the ROI
+    random_points = ee.FeatureCollection.randomPoints(roi, num_points, 42)
+    
+    # Extract multi-temporal pixel values at these points
+    sample_fc = combined.sampleRegions(
+        collection=random_points,
+        scale=10,
+        tileScale=4
+    )
+
+    features = sample_fc.getInfo()['features']
+    records = []
+    for idx, f in enumerate(features):
+        props = f['properties']
+        geom = f['geometry']['coordinates']
+        records.append({
+            'point_idx': idx,
+            'longitude': geom[0],
+            'latitude': geom[1],
+            'NDVI_t1': props.get('NDVI_t1', 0),
+            'NDWI_t1': props.get('NDWI_t1', 0),
+            'EVI_t1':  props.get('EVI_t1', 0),
+            'B4_t1':   props.get('B4_t1', 0),
+            'B8_t1':   props.get('B8_t1', 0),
+            'B11_t1':  props.get('B11_t1', 0),
+            'VV_t1':   props.get('VV_t1', -15),
+            'VH_t1':   props.get('VH_t1', -20),
+            'VH_VV_ratio_t1': props.get('VH_VV_ratio_t1', 1.3),
+            'VV_contrast_t1': props.get('VV_contrast_t1', 0),
+            'VV_entropy_t1':  props.get('VV_entropy_t1', 0),
+            
+            'NDVI_t2': props.get('NDVI_t2', 0),
+            'NDWI_t2': props.get('NDWI_t2', 0),
+            'EVI_t2':  props.get('EVI_t2', 0),
+            'B4_t2':   props.get('B4_t2', 0),
+            'B8_t2':   props.get('B8_t2', 0),
+            'B11_t2':  props.get('B11_t2', 0),
+            'VV_t2':   props.get('VV_t2', -15),
+            'VH_t2':   props.get('VH_t2', -20),
+            'VH_VV_ratio_t2': props.get('VH_VV_ratio_t2', 1.3),
+            'VV_contrast_t2': props.get('VV_contrast_t2', 0),
+            'VV_entropy_t2':  props.get('VV_entropy_t2', 0),
+        })
+
+    return pd.DataFrame(records)
+
 # Removed assign_labels_from_ndvi as we now use real ground truth
 
 

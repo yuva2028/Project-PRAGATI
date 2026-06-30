@@ -25,7 +25,7 @@ const CHART_OPTS = {
   }
 }
 
-export default function Analytics() {
+export default function Analytics({ userCoords }) {
   const [ndviData,     setNdviData]     = useState([])
   const [phenoMetrics, setPhenoMetrics] = useState(null)
   const [rainfallData, setRainfallData] = useState(null)
@@ -34,10 +34,12 @@ export default function Analytics() {
   const [error,        setError]        = useState(null)
 
   useEffect(() => {
+    setLoading(true)
+    const params = userCoords ? `?lat=${userCoords.lat}&lng=${userCoords.lng}` : ''
     Promise.all([
-      axios.get(`${API}/api/ndvi`),
-      axios.get(`${API}/api/rainfall`),
-      axios.get(`${API}/api/rainfall-series`),
+      axios.get(`${API}/api/ndvi${params}`),
+      axios.get(`${API}/api/rainfall${params}`),
+      axios.get(`${API}/api/rainfall-series${params}`),
     ])
     .then(([ndviRes, rainRes, rainSeriesRes]) => {
       setNdviData(ndviRes.data.data || [])
@@ -47,7 +49,7 @@ export default function Analytics() {
       setLoading(false)
     })
     .catch(e => { setError(e.message); setLoading(false) })
-  }, [])
+  }, [userCoords])
 
   const STAGE_COLORS = { Sowing:'#f59e0b', Vegetative:'#10b981', Flowering:'#8b5cf6', Maturity:'#f97316' }
 

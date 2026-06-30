@@ -121,7 +121,14 @@ def calculate_vci_image():
     _, start_recent = get_date_range(2)
 
     ndvi_collection = collection.select("NDVI")
-    ndvi_current = collection.filterDate(start_recent, end_date).select("NDVI").median()
+    recent_collection = collection.filterDate(start_recent, end_date).select("NDVI")
+    ndvi_current = ee.Image(
+        ee.Algorithms.If(
+            recent_collection.size().gt(0),
+            recent_collection.median(),
+            ndvi_collection.median() # fallback if no recent data
+        )
+    )
     ndvi_min = ndvi_collection.min()
     ndvi_max = ndvi_collection.max()
 
@@ -146,12 +153,15 @@ def get_vci_tile_url():
     return map_id["tile_fetcher"].url_format
 
 
-def get_stress_stats():
-    """Returns area-weighted stress distribution over India. Requires GEE."""
+def get_stress_stats(lat: float = None, lng: float = None):
+    """Returns area-weighted stress distribution over a region or India. Requires GEE."""
     ee = _get_ee()
     get_roi, get_date_range, get_sentinel2_collection, _add_ndvi, _mask = _get_gee_sentinel2()
 
-    roi = get_roi()
+    if lat is not None and lng is not None:
+        roi = ee.Geometry.Point([lng, lat]).buffer(50000)  # 50km buffer around point
+    else:
+        roi = get_roi()
     vci = calculate_vci_image()
 
     # Create stress class image
@@ -192,18 +202,21 @@ def get_stress_stats():
     return result
 
 
-def get_ndvi_time_series_for_stress():
+def get_ndvi_time_series_for_stress(lat: float = None, lng: float = None):
     """
     Returns 6 monthly NDVI composites with phenology annotations.
-    Uses Karnataka state as the pilot ROI.
+    Uses specific location buffer or Karnataka state as the pilot ROI.
     Requires GEE authentication.
     """
     ee = _get_ee()
     get_roi, get_date_range, get_sentinel2_collection, add_ndvi, mask_s2_clouds = _get_gee_sentinel2()
     from datetime import datetime, timedelta
 
-    # Karnataka state bounding box — declared pilot area for this project
-    karnataka_roi = ee.Geometry.Rectangle([74.0, 11.5, 78.6, 18.5])
+    # If coordinates are provided, use a 10km buffer. Otherwise, use Karnataka.
+    if lat is not None and lng is not None:
+        roi = ee.Geometry.Point([lng, lat]).buffer(10000)
+    else:
+        roi = ee.Geometry.Rectangle([74.0, 11.5, 78.6, 18.5])
 
     now = datetime.utcnow()
     monthly_features = []
@@ -215,7 +228,7 @@ def get_ndvi_time_series_for_stress():
 
         composite = (
             ee.ImageCollection("COPERNICUS/S2_SR_HARMONIZED")
-            .filterBounds(karnataka_roi)
+            .filterBounds(roi)
             .filterDate(month_start.strftime("%Y-%m-%d"), month_end.strftime("%Y-%m-%d"))
             .filter(ee.Filter.notNull(["system:time_start"]))
             .filter(ee.Filter.lt("CLOUDY_PIXEL_PERCENTAGE", 30))
@@ -227,7 +240,7 @@ def get_ndvi_time_series_for_stress():
 
         stats = composite.reduceRegion(
             reducer=ee.Reducer.mean(),
-            geometry=karnataka_roi,
+            geometry=roi,
             scale=5000,
             maxPixels=1e8,
             bestEffort=True,

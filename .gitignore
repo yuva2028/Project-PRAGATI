@@ -72,3 +72,6 @@ logs/
 # Database
 *.sqlite3
 *.db
+
+# Vite local distribution
+project/frontend/dev-dist/

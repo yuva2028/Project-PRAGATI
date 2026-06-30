@@ -1,47 +1,46 @@
-name: CI Pipeline
+name: CI
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [ "main" ]
   pull_request:
-    branches: [ main, master ]
+    branches: [ "main" ]
 
 jobs:
-  test-backend:
+  backend-lint-test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-      
+      - uses: actions/checkout@v4
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: "3.10"
-          
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r project/backend/requirements.txt
-          pip install pytest
-          
-      - name: Run Backend Tests
+          pip install pytest pytest-asyncio httpx ruff
+      - name: Lint with ruff
         run: |
-          # If tests exist, run them. For now, just check syntax.
-          python -m py_compile project/backend/main.py
+          ruff check project/backend
+      - name: Test with pytest
+        run: |
+          PYTHONPATH=project python -m pytest project/backend/tests
 
-  build-frontend:
+  frontend-lint-build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-      
+      - uses: actions/checkout@v4
       - name: Set up Node.js
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
           node-version: "18"
-          
       - name: Install dependencies
         working-directory: project/frontend
         run: npm ci
-        
-      - name: Build
+      - name: Lint frontend
+        working-directory: project/frontend
+        run: npx eslint src
+      - name: Build frontend
         working-directory: project/frontend
         run: npm run build
