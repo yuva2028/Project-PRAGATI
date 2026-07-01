@@ -19,3 +19,4 @@ python-multipart==0.0.9
 sqlalchemy==2.0.30
 fastapi-cache2[redis]==0.2.1
 prometheus-fastapi-instrumentator==7.0.0
+redis[asyncio]>=5.0.0

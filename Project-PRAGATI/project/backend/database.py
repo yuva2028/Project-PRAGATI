@@ -41,3 +41,36 @@ def get_db():
         yield db
     finally:
         db.close()
+
+
+def seed_demo_user():
+    """
+    Creates a default demo user (admin / admin123) on first startup so that
+    judges and reviewers can log in immediately without having to register.
+    This is idempotent — safe to call on every startup.
+    """
+    try:
+        from backend.models.user import User
+        import bcrypt
+
+        db = SessionLocal()
+        try:
+            existing = db.query(User).filter(User.username == "admin").first()
+            if not existing:
+                hashed = bcrypt.hashpw(b"admin123", bcrypt.gensalt()).decode("utf-8")
+                demo_user = User(
+                    username="admin",
+                    email="admin@pragati.isro",
+                    hashed_password=hashed,
+                    disabled=False,
+                )
+                db.add(demo_user)
+                db.commit()
+                print("[PRAGATI] Demo user created: admin / admin123")
+            else:
+                print("[PRAGATI] Demo user already exists: admin")
+        finally:
+            db.close()
+    except Exception as e:
+        print(f"[WARN] Could not seed demo user: {e}")
+

@@ -35,9 +35,10 @@ for path in (REPO_ROOT, PROJECT_DIR):
 GEE_PROJECT = os.getenv("GEE_PROJECT", "pragati-hackathon")
 
 # Initialize Database
-from backend.database import engine
+from backend.database import engine, seed_demo_user
 from backend.models import user
 user.Base.metadata.create_all(bind=engine)
+seed_demo_user()
 
 import asyncio
 from backend.api.cache_utils import spatial_key_builder
