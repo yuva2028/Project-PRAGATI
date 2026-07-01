@@ -193,20 +193,24 @@ async def http_exception_handler(request: Request, exc: HTTPException):
         content={"detail": exc.detail},
     )
 
-# ── Routers ──────────────────────────────────────
 try:
     from backend.api import advisory, crop, stress, analytics, tiles, auth, chatbot
+    from backend.api import yield_forecast, weather_forecast, alerts
 except ImportError as e:
     _log.warning("Falling back to project backend router imports: %s", e)
     from project.backend.api import advisory, crop, stress, analytics, tiles, auth, chatbot
+    from project.backend.api import yield_forecast, weather_forecast, alerts
 
-app.include_router(auth.router,      prefix="/api/auth", tags=["Authentication"])
-app.include_router(crop.router,      prefix="/api", tags=["Crop Classification"])
-app.include_router(stress.router,    prefix="/api", tags=["Moisture Stress"])
-app.include_router(advisory.router,  prefix="/api", tags=["Irrigation Advisory"])
-app.include_router(analytics.router, prefix="/api", tags=["Analytics"])
-app.include_router(tiles.router,     prefix="/api", tags=["Map Tiles"])
-app.include_router(chatbot.router,   prefix="/api", tags=["AI Chatbot"])
+app.include_router(auth.router,              prefix="/api/auth", tags=["Authentication"])
+app.include_router(crop.router,              prefix="/api", tags=["Crop Classification"])
+app.include_router(stress.router,            prefix="/api", tags=["Moisture Stress"])
+app.include_router(advisory.router,          prefix="/api", tags=["Irrigation Advisory"])
+app.include_router(analytics.router,         prefix="/api", tags=["Analytics"])
+app.include_router(tiles.router,             prefix="/api", tags=["Map Tiles"])
+app.include_router(chatbot.router,           prefix="/api", tags=["AI Chatbot"])
+app.include_router(yield_forecast.router,    prefix="/api", tags=["Yield Forecast"])
+app.include_router(weather_forecast.router,  prefix="/api", tags=["Weather Forecast"])
+app.include_router(alerts.router,            prefix="/api", tags=["Alert Center"])
 
 
 @app.get("/")

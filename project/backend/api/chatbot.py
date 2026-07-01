@@ -529,7 +529,8 @@ async def chat(request: ChatRequestModel):
                 yield "data: [DONE]\n\n"
             except Exception as e:
                 logger.error("Chatbot local streaming failed: %s", e)
-                yield f"data: {json.dumps({'type': 'FINAL_RESPONSE', 'content': f'\\n\\n**Chatbot Error**: {str(e)}'})}\n\n"
+                error_msg = f'\n\n**Chatbot Error**: {str(e)}'
+                yield f"data: {json.dumps({'type': 'FINAL_RESPONSE', 'content': error_msg})}\n\n"
                 yield "data: [DONE]\n\n"
                 
         return StreamingResponse(event_generator(), media_type="text/event-stream")
@@ -580,7 +581,8 @@ async def chat(request: ChatRequestModel):
                     yield "data: [DONE]\n\n"
                 except Exception as e:
                     logger.error("Gemini streaming failed: %s", e)
-                    yield f"data: {json.dumps({'type': 'FINAL_RESPONSE', 'content': f'\\n\\n**Chatbot Error**: {str(e)}'})}\n\n"
+                    error_msg = f'\n\n**Chatbot Error**: {str(e)}'
+                    yield f"data: {json.dumps({'type': 'FINAL_RESPONSE', 'content': error_msg})}\n\n"
                     yield "data: [DONE]\n\n"
             
             return StreamingResponse(event_generator(), media_type="text/event-stream")
@@ -637,7 +639,8 @@ async def chat(request: ChatRequestModel):
                     yield "data: [DONE]\n\n"
                 except Exception as e:
                     logger.error("Chatbot fallback streaming failed: %s", e)
-                    yield f"data: {json.dumps({'type': 'FINAL_RESPONSE', 'content': f'\\n\\n**Chatbot Error**: {str(e)}'})}\n\n"
+                    error_msg = f'\n\n**Chatbot Error**: {str(e)}'
+                    yield f"data: {json.dumps({'type': 'FINAL_RESPONSE', 'content': error_msg})}\n\n"
                     yield "data: [DONE]\n\n"
                     
             return StreamingResponse(event_generator(), media_type="text/event-stream")

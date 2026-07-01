@@ -59,6 +59,7 @@ function SimpleMarkdown({ content }) {
 }
 
 import { useStore } from '../store/useStore'
+const API = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
 export default function ChatBot() {
   const { activeField } = useStore();
@@ -140,7 +141,7 @@ export default function ChatBot() {
 
     try {
       // Use Fetch API for streaming response via SSE
-      const response = await fetch('http://localhost:8000/api/chat', {
+      const response = await fetch(`${API}/api/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

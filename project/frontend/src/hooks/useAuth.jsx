@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import axios from 'axios';
+const API = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
 const AuthContext = createContext();
 
@@ -20,7 +21,7 @@ export const AuthProvider = ({ children }) => {
 
   const fetchUser = async () => {
     try {
-      const { data } = await axios.get('http://localhost:8000/api/auth/users/me');
+      const { data } = await axios.get(`${API}/api/auth/users/me`);
       setUser(data);
     } catch (error) {
       console.error("Failed to fetch user:", error);
@@ -35,7 +36,7 @@ export const AuthProvider = ({ children }) => {
     formData.append('username', username);
     formData.append('password', password);
 
-    const { data } = await axios.post('http://localhost:8000/api/auth/token', formData, {
+    const { data } = await axios.post(`${API}/api/auth/token`, formData, {
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded'
       }
@@ -48,7 +49,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   const register = async (username, email, password) => {
-    await axios.post('http://localhost:8000/api/auth/register', {
+    await axios.post(`${API}/api/auth/register`, {
       username,
       email,
       password

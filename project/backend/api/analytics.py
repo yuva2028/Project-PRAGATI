@@ -32,7 +32,8 @@ async def get_ndvi_series(lat: float = None, lng: float = None):
         from ml.moisture_model import get_ndvi_time_series_for_stress
     
     try:
-        res = get_ndvi_time_series_for_stress(lat, lng)
+        import asyncio
+        res = await asyncio.to_thread(get_ndvi_time_series_for_stress, lat, lng)
         if res.get("time_series"):
             return {
                 "status": "success",

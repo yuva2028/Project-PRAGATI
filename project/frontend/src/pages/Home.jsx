@@ -1,64 +1,58 @@
-
 import { useState, useEffect } from 'react'
-
 import axios from 'axios'
-
-
+import ReportGenerator from '../components/ReportGenerator.jsx'
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
-
-
 const MODULES = [
-
   {
-
     href: '/crop-map',
-
     icon: '◈',
-
     title: 'Crop Classification',
-
     desc: 'Random Forest + XGBoost on 22-dimensional Sentinel-1/2 multi-temporal stack. GLCM texture features. Evaluated against ground truth.',
-
     accent: '#3b82f6',
-
     tag: 'RF + XGBoost',
-
   },
-
   {
-
     href: '/stress',
-
     icon: '◉',
-
     title: 'Moisture Stress',
-
     desc: 'LSTM-based VCI prediction from NDVI/NDWI time series. Phenology-aware stage adjustment. SMI from Sentinel-1 VH.',
-
     accent: '#f59e0b',
-
     tag: 'LSTM + VCI',
-
   },
-
   {
-
     href: '/advisory',
-
     icon: '◆',
-
     title: 'Irrigation Advisory',
-
     desc: 'FAO-56 ETc = ET₀ × Kc water balance. Canal command area gate-discharge recommendations. PMKSY planning support.',
-
     accent: '#10b981',
-
     tag: 'FAO-56',
-
   },
-
+  {
+    href: '/satellite',
+    icon: '🛰',
+    title: 'Satellite Viewer',
+    desc: 'Compare multi-spectral bands (NDVI, NDWI, EVI, Red, NIR) and time-lapse sequences of GEE Sentinel-2/1 tiles.',
+    accent: '#a78bfa',
+    tag: 'Sentinel composite',
+  },
+  {
+    href: '/yield',
+    icon: '📊',
+    title: 'Yield Forecast',
+    desc: 'District-level Kharif crop yield forecasting and economic impact models adjusted for VCI moisture stress levels.',
+    accent: '#06b6d4',
+    tag: 'FAO Yield Model',
+  },
+  {
+    href: '/kisan',
+    icon: '👨‍🌾',
+    title: 'KisanView Dashboard',
+    desc: 'Simplified bilingual Hindi/English farmer interface with traffic-light alerts, voice advice, and weather forecast.',
+    accent: '#f97316',
+    tag: 'Bilingual Farmer',
+  },
 ]
 
 
@@ -119,26 +113,21 @@ export default function Home({ userCoords }) {
 
     <div>
 
-      <div className="page-header">
-
-        <div className="page-eyebrow">
-
-          <span className="live-dot" aria-hidden="true" />
-
-          Live · Sentinel-1/2 via Google Earth Engine
-
+      <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '1rem' }}>
+        <div>
+          <div className="page-eyebrow">
+            <span className="live-dot" aria-hidden="true" />
+            Live · Sentinel-1/2 via Google Earth Engine
+          </div>
+          <h1 className="page-title">Agricultural Intelligence Dashboard</h1>
+          <p className="page-subtitle">
+            Satellite-driven crop monitoring for Karnataka pilot area
+            {userCoords ? ` · Your position: ${userCoords.lat}°N ${userCoords.lng}°E` : ''}
+          </p>
         </div>
-
-        <h1 className="page-title">Agricultural Intelligence Dashboard</h1>
-
-        <p className="page-subtitle">
-
-          Satellite-driven crop monitoring for Karnataka pilot area
-
-          {userCoords ? ` · Your position: ${userCoords.lat}°N ${userCoords.lng}°E` : ''}
-
-        </p>
-
+        <div style={{ marginTop: '1rem' }}>
+          <ReportGenerator />
+        </div>
       </div>
 
 

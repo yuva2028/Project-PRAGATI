@@ -1,27 +1,39 @@
 import { BrowserRouter, Routes, Route, NavLink, Navigate } from 'react-router-dom'
 import { useAuth } from './hooks/useAuth'
-import Login from './pages/Login.jsx'
 import { useTranslation } from 'react-i18next'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, lazy, Suspense } from 'react'
 import { useStore } from './store/useStore'
 
 import { useUserLocation } from './hooks/useUserLocation.js'
 import LocationSearch from './components/LocationSearch.jsx'
 import ChatBot from './components/ChatBot.jsx'
-
-import Home from './pages/Home.jsx'
-import CropMap from './pages/CropMap.jsx'
-import MoistureStress from './pages/MoistureStress.jsx'
-import IrrigationAdvisory from './pages/IrrigationAdvisory.jsx'
-import Analytics from './pages/Analytics.jsx'
 import ErrorBoundary from './components/ErrorBoundary.jsx'
+import ReportGenerator from './components/ReportGenerator.jsx'
+const API = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+
+const Login = lazy(() => import('./pages/Login.jsx'))
+const Home = lazy(() => import('./pages/Home.jsx'))
+const CropMap = lazy(() => import('./pages/CropMap.jsx'))
+const MoistureStress = lazy(() => import('./pages/MoistureStress.jsx'))
+const IrrigationAdvisory = lazy(() => import('./pages/IrrigationAdvisory.jsx'))
+const Analytics = lazy(() => import('./pages/Analytics.jsx'))
+const SatelliteViewer = lazy(() => import('./pages/SatelliteViewer.jsx'))
+const Methodology = lazy(() => import('./pages/Methodology.jsx'))
+const YieldForecast = lazy(() => import('./pages/YieldForecast.jsx'))
+const KisanView = lazy(() => import('./pages/KisanView.jsx'))
+const AlertCenter = lazy(() => import('./pages/AlertCenter.jsx'))
 
 const NAV = [
-  { path: '/',          label: 'Overview',           icon: '⊞' },
-  { path: '/crop-map',  label: 'Crop Classification', icon: '◈' },
-  { path: '/stress',    label: 'Moisture Stress',     icon: '◉' },
-  { path: '/advisory',  label: 'Irrigation Advisory', icon: '◆' },
-  { path: '/analytics', label: 'Analytics',           icon: '▦' },
+  { path: '/',            label: 'Overview',           icon: '⊞' },
+  { path: '/crop-map',    label: 'Crop Classification', icon: '◈' },
+  { path: '/stress',      label: 'Moisture Stress',     icon: '◉' },
+  { path: '/advisory',    label: 'Irrigation Advisory', icon: '◆' },
+  { path: '/analytics',   label: 'Analytics',           icon: '▦' },
+  { path: '/satellite',   label: 'Satellite Viewer',    icon: '🛰' },
+  { path: '/yield',       label: 'Yield Forecast',      icon: '📊' },
+  { path: '/kisan',       label: 'KisanView',           icon: '👨‍🌾' },
+  { path: '/alerts',      label: 'Alert Center',        icon: '🔔' },
+  { path: '/methodology', label: 'Methodology',         icon: '📘' },
 ]
 
 const ProtectedRoute = ({ children }) => {
@@ -101,7 +113,7 @@ export default function App() {
                     <div className="brand-icon" aria-hidden="true">🛰</div>
                     <div>
                       <div className="brand-name">PRAGATI</div>
-                      <div className="brand-sub">ISRO · 2025</div>
+                      <div className="brand-sub">ISRO · 2026</div>
                     </div>
                   </div>
                   <div style={{
@@ -248,35 +260,60 @@ export default function App() {
                     <strong>API Connection Offline:</strong> The backend server is unreachable. Ensure the FastAPI server is running on port 8000.
                   </div>
                 )}
+                
+                {geeStatus === 'offline' && apiStatus === 'online' && (
+                  <div style={{
+                    background: 'rgba(245, 158, 11, 0.1)',
+                    borderBottom: '1px solid rgba(245, 158, 11, 0.2)',
+                    padding: '10px 24px',
+                    fontSize: '0.85rem',
+                    color: '#fbbf24',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    justifyContent: 'center',
+                    animation: 'fadeUp 0.3s ease'
+                  }}>
+                    <span className="live-dot" style={{ background: '#fbbf24' }} />
+                    <strong>Offline Simulation Mode:</strong> Earth Engine limits exceeded. Displaying robust synthetic fallback models for seamless demonstration.
+                  </div>
+                )}
                 <ErrorBoundary>
-                  <Routes>
-                    <Route path="/" element={<Home />} />
-                    <Route path="/crop-map" element={
-                      <CropMap 
-                        userCoords={coords} 
-                        userBbox={bbox} 
-                        mapViewState={mapViewState}
-                        onMapChange={setMapViewState}
-                      />
-                    } />
-                    <Route path="/stress" element={
-                      <MoistureStress 
-                        userCoords={coords} 
-                        userBbox={bbox} 
-                        mapViewState={mapViewState}
-                        onMapChange={setMapViewState}
-                      />
-                    } />
-                    <Route path="/advisory" element={
-                      <IrrigationAdvisory 
-                        userCoords={coords} 
-                        userBbox={bbox} 
-                        mapViewState={mapViewState}
-                        onMapChange={setMapViewState}
-                      />
-                    } />
-                    <Route path="/analytics" element={<Analytics userCoords={coords} />} />
-                  </Routes>
+                  <Suspense fallback={<div style={{padding: '2rem'}}>Loading page...</div>}>
+                    <Routes>
+                      <Route path="/" element={<Home />} />
+                      <Route path="/crop-map" element={
+                        <CropMap 
+                          userCoords={coords} 
+                          userBbox={bbox} 
+                          mapViewState={mapViewState}
+                          onMapChange={setMapViewState}
+                        />
+                      } />
+                      <Route path="/stress" element={
+                        <MoistureStress 
+                          userCoords={coords} 
+                          userBbox={bbox} 
+                          mapViewState={mapViewState}
+                          onMapChange={setMapViewState}
+                        />
+                      } />
+                      <Route path="/advisory" element={
+                        <IrrigationAdvisory 
+                          userCoords={coords} 
+                          userBbox={bbox} 
+                          mapViewState={mapViewState}
+                          onMapChange={setMapViewState}
+                        />
+                      } />
+                      <Route path="/analytics" element={<Analytics userCoords={coords} />} />
+                      <Route path="/satellite" element={<SatelliteViewer />} />
+                      <Route path="/methodology" element={<Methodology />} />
+                      <Route path="/yield" element={<YieldForecast />} />
+                      <Route path="/kisan" element={<KisanView />} />
+                      <Route path="/alerts" element={<AlertCenter />} />
+                    </Routes>
+                  </Suspense>
                 </ErrorBoundary>
               </main>
 

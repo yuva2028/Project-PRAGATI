@@ -60,7 +60,8 @@ async def get_stress_map(lat: float = None, lng: float = None):
         from ml.moisture_model import get_stress_stats
         
     try:
-        stats = get_stress_stats(lat, lng)
+        import asyncio
+        stats = await asyncio.to_thread(get_stress_stats, lat, lng)
     except Exception as e:
         logger.warning("Failed to fetch live stress stats from GEE (non-fatal): %s", e)
         stats = None
@@ -187,7 +188,8 @@ async def get_phenology(lat: float = None, lng: float = None):
         except ImportError as e:
             logger.warning("Falling back to local phenology import: %s", e)
             from ml.moisture_model import get_ndvi_time_series_for_stress
-        res = get_ndvi_time_series_for_stress(lat, lng)
+        import asyncio
+        res = await asyncio.to_thread(get_ndvi_time_series_for_stress, lat, lng)
         if res.get("time_series"):
             return {
                 "status": "success",
