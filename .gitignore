@@ -74,4 +74,10 @@ logs/
 *.db
 
 # Vite local distribution
-project/frontend/dev-dist/
+**/dev-dist/
+
+# Unrelated desktop files/folders
+/*.lnk
+/DBMS -P/
+/rapid response/
+

@@ -161,7 +161,11 @@ export default function IrrigationAdvisory({ userCoords, userBbox, mapViewState,
   }, [map, filtered, userCoords])
 
   if (error) {
-    throw new Error(error);
+    return (
+      <div className="error-card" role="alert" style={{ margin: '2rem' }}>
+        <strong>API Error:</strong> {error}
+      </div>
+    );
   }
 
   return (

@@ -29,6 +29,9 @@ MODEL_DIR = BACKEND_DIR / "models"
 _CROP_MAP_CACHE: dict = {}
 _CACHE_TTL_SECONDS = 3600
 
+# ── In-memory model cache to avoid re-training on every request ──────────
+_MODEL_CACHE: dict = {}  # {"rf": clf_rf, "xgb": clf_xgb, "metrics": metrics, "df": df}
+
 CROP_COLORS = {
     "Rice":      "#22c55e",
     "Maize":     "#eab308",
@@ -106,25 +109,58 @@ async def get_crop_map(months_back: int = Query(default=6, ge=1, le=12)):
     FEATURE_COLS = trainer.FEATURE_COLS
     train_and_evaluate = trainer.train_and_evaluate
 
-    df = None
-    source = "Sentinel-2 + Sentinel-1 via GEE"
-    
-    # Try real GEE data first
-    try:
-        from project.ml.crop_classifier import get_training_samples_from_gee
-        df = get_training_samples_from_gee()
-    except Exception as gee_ex:
-        logger.warning("GEE training sample extraction failed, falling back: %s", gee_ex)
+    # ── Use cached models if available ─────────────────────────────────────
+    if _MODEL_CACHE.get("rf") is not None:
+        clf_rf = _MODEL_CACHE["rf"]
+        clf_xgb = _MODEL_CACHE["xgb"]
+        metrics = _MODEL_CACHE["metrics"]
+        df = _MODEL_CACHE["df"]
+        source = _MODEL_CACHE.get("source", "Cached Model")
+    else:
         df = None
+        source = "Sentinel-2 + Sentinel-1 via GEE"
+        
+        # Try real GEE data first
+        try:
+            from project.ml.crop_classifier import get_training_samples_from_gee
+            df = get_training_samples_from_gee()
+        except Exception as gee_ex:
+            logger.warning("GEE training sample extraction failed, falling back: %s", gee_ex)
+            df = None
 
-    if df is None or df.empty:
-        # Fall back to realistic synthetic features
-        df, _ = _load_or_generate_features()
-        source = "Random Forest | Sentinel-1/2 Spectral Signatures (Fallback)"
+        if df is None or df.empty:
+            # Fall back to realistic synthetic features
+            df, _ = _load_or_generate_features()
+            source = "Random Forest | Sentinel-1/2 Spectral Signatures (Fallback)"
+
+        try:
+            clf_rf, clf_xgb, metrics = await asyncio.to_thread(train_and_evaluate, df)
+            
+            # Cache trained models in memory for subsequent requests
+            _MODEL_CACHE["rf"] = clf_rf
+            _MODEL_CACHE["xgb"] = clf_xgb
+            _MODEL_CACHE["metrics"] = metrics
+            _MODEL_CACHE["df"] = df
+            _MODEL_CACHE["source"] = source
+            
+            # Also persist RF model to disk for faster startup
+            try:
+                import joblib
+                model_path = MODEL_DIR / "crop_rf_model.joblib"
+                model_path.parent.mkdir(parents=True, exist_ok=True)
+                joblib.dump(clf_rf, model_path)
+                os.chmod(model_path, 0o600)
+                xgb_path = MODEL_DIR / "crop_xgb_model.joblib"
+                joblib.dump(clf_xgb, xgb_path)
+                os.chmod(xgb_path, 0o600)
+                logger.info("Models saved to disk for persistence")
+            except Exception as save_err:
+                logger.warning("Failed to save models to disk: %s", save_err)
+        except Exception as e:
+            logger.warning("Crop classification failed: %s", e)
+            raise HTTPException(status_code=500, detail=f"Classification error: {str(e)}")
 
     try:
-        clf_rf, clf_xgb, metrics = await asyncio.to_thread(train_and_evaluate, df)
-        
         # Predictions for Random Forest
         predictions_rf = clf_rf.predict(df[FEATURE_COLS].fillna(0)).tolist()
         area_stats_rf = get_crop_area_stats(predictions_rf)

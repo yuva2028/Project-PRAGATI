@@ -30,10 +30,6 @@ from ml.moisture_model import get_stress_category
 
 router = APIRouter()
 
-# Advisory cache — 5-minute TTL to avoid recomputing on every request
-_ADVISORY_CACHE: dict = {}
-_ADVISORY_TTL = 300  # seconds
-
 SAMPLE_FIELDS = [
     {"field_id": "KAR-F001", "crop": "Rice",      "vci": 12,  "stage": "Vegetative", "rainfall_mm": 5,  "lat": 15.30, "lng": 75.71},
     {"field_id": "KAR-F002", "crop": "Sugarcane", "vci": 28,  "stage": "Flowering",  "rainfall_mm": 15, "lat": 15.45, "lng": 76.10},
@@ -79,13 +75,17 @@ async def get_fields_for_coords(lat: float = None, lng: float = None) -> List[Di
         return SAMPLE_FIELDS
     
     try:
-        from project.ml.crop_classifier import get_inference_samples_from_gee
-        from project.ml.moisture_model import compute_pixel_stress
-        from project.gee.weather import get_rainfall_stats
-    except ImportError:
         from ml.crop_classifier import get_inference_samples_from_gee
         from ml.moisture_model import compute_pixel_stress
         from gee.weather import get_rainfall_stats
+    except ImportError:
+        try:
+            from project.ml.crop_classifier import get_inference_samples_from_gee
+            from project.ml.moisture_model import compute_pixel_stress
+            from project.gee.weather import get_rainfall_stats
+        except ImportError as e:
+            logger.warning("Could not import GEE helpers: %s", e)
+            return generate_synthetic_fields_at_coords(lat, lng)
 
     import asyncio
     try:
@@ -100,7 +100,7 @@ async def get_fields_for_coords(lat: float = None, lng: float = None) -> List[Di
             rain_mm = 5.0
             
         fields_to_use = []
-        for i, row in df_live.iterrows():
+        for i, (_, row) in enumerate(df_live.iterrows()):
             ndvi_current = float(row.get('NDVI_t1', 0.5))
             ndvi_t2 = float(row.get('NDVI_t2', 0.5))
             ndvi_min = min(ndvi_current, ndvi_t2) - 0.1
@@ -187,8 +187,8 @@ class SummaryResponse(BaseModel):
     average_vci: float
 
 @router.get("/advisory/summary", response_model=SummaryResponse)
-@cache(expire=300)
-async def get_advisory_summary(lat: float = None, lng: float = None):
+@cache(expire=300, key_builder=spatial_key_builder)
+async def get_advisory_summary(request: Request, lat: float = None, lng: float = None):
     """Returns summary statistics for the home dashboard."""
     try:
         fields_to_use = await get_fields_for_coords(lat, lng)

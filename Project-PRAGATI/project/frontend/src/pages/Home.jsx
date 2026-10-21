@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { Link } from 'react-router-dom'
 import axios from 'axios'
 import ReportGenerator from '../components/ReportGenerator.jsx'
 
@@ -206,11 +207,11 @@ export default function Home({ userCoords }) {
 
             {MODULES.map((m, i) => (
 
-              <a
+              <Link
 
                 key={m.title}
 
-                href={m.href}
+                to={m.href}
 
                 className="card fade-up"
 
@@ -242,7 +243,7 @@ export default function Home({ userCoords }) {
 
                 </div>
 
-              </a>
+              </Link>
 
             ))}
 

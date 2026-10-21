@@ -100,7 +100,10 @@ export default function CommandCenter() {
           {/* Crop Map */}
           <div className="cc-map-container">
             <MapContainer center={center} zoom={14} zoomControl={false} dragging={false} className="cc-map">
-              <TileLayer url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}" />
+              <TileLayer 
+                attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" 
+              />
               <Polygon positions={mockPolygon} pathOptions={{ color: '#22c55e', weight: 2, fillColor: '#22c55e', fillOpacity: 0.4 }} />
               <MapController />
             </MapContainer>
@@ -116,7 +119,10 @@ export default function CommandCenter() {
           {/* Stress Map */}
           <div className="cc-map-container">
             <MapContainer center={center} zoom={14} zoomControl={false} dragging={false} className="cc-map">
-              <TileLayer url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}" />
+              <TileLayer 
+                attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" 
+              />
               <Polygon positions={mockPolygon} pathOptions={{ color: '#ef4444', weight: 2, fillColor: '#ef4444', fillOpacity: 0.5 }} />
               <MapController />
             </MapContainer>
@@ -135,7 +141,10 @@ export default function CommandCenter() {
           {/* Growth Stage Map */}
           <div className="cc-map-container">
             <MapContainer center={center} zoom={14} zoomControl={false} dragging={false} className="cc-map">
-              <TileLayer url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}" />
+              <TileLayer 
+                attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" 
+              />
               <Polygon positions={mockPolygon} pathOptions={{ color: '#f59e0b', weight: 2, fillColor: '#f59e0b', fillOpacity: 0.4 }} />
               <MapController />
             </MapContainer>
@@ -181,7 +190,10 @@ export default function CommandCenter() {
                <div style={{ display: 'flex', gap: '1rem', height: '100%', alignItems: 'center' }}>
                   <div style={{ flex: 1, height: '120px', background: '#0f172a', border: '1px solid #1e293b', borderRadius: '4px', overflow: 'hidden' }}>
                     <MapContainer center={center} zoom={13} zoomControl={false} dragging={false} style={{height: '100%', width: '100%'}}>
-                       <TileLayer url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}" />
+                       <TileLayer 
+                         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" 
+                       />
                        <Polygon positions={mockPolygon} pathOptions={{ color: '#3b82f6', weight: 1, fillColor: '#3b82f6', fillOpacity: 0.6 }} />
                     </MapContainer>
                   </div>

@@ -24,6 +24,8 @@ if SQLALCHEMY_DATABASE_URL:
         engine = None
 
 if not engine:
+    # __file__ is /app/backend/database.py → parent = /app/backend → parent = /app
+    # We store pragati.db at /app/database/pragati.db which is always inside the container
     DATABASE_DIR = Path(__file__).resolve().parent.parent / "database"
     DATABASE_DIR.mkdir(parents=True, exist_ok=True)
     SQLALCHEMY_DATABASE_URL = f"sqlite:///{DATABASE_DIR}/pragati.db"

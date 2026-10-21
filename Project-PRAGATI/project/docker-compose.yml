@@ -8,15 +8,21 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - GEE_PROJECT=pragati-hackathon
-      - FRONTEND_URL=http://localhost:5173
+      - GEE_PROJECT=${GEE_PROJECT:-pragati-hackathon}
+      - GEE_SERVICE_ACCOUNT=${GEE_SERVICE_ACCOUNT:-}
+      - GEE_KEY_FILE=${GEE_KEY_FILE:-}
+      - GEE_KEY_DIR=/app/backend
+      - FRONTEND_URL=${FRONTEND_URL:-http://localhost:5173}
       - REDIS_URL=redis://redis:6379
+      - SECRET_KEY=${SECRET_KEY:-change-me-in-production-use-a-long-random-string}
     volumes:
       - ./data:/app/data
-      - ~/.config/earthengine:/root/.config/earthengine
+      # Personal earthengine token (local dev)
+      - ~/.config/earthengine:/root/.config/earthengine:ro
     depends_on:
       redis:
         condition: service_healthy
+    restart: on-failure
 
   redis:
     image: redis:alpine
@@ -40,7 +46,7 @@ services:
     ports:
       - "3000:3000"
     environment:
-      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}
     depends_on:
       - prometheus
 
@@ -48,7 +54,10 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      args:
+        - VITE_API_URL=${VITE_API_URL:-http://localhost:8000}
     ports:
       - "5173:80"
     depends_on:
       - backend
+    restart: on-failure

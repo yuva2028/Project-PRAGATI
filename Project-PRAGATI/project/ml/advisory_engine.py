@@ -173,7 +173,7 @@ def generate_bulk_advisories(fields: list = None, lat: float = None, lng: float 
                     "rainfall_mm": int(_rng.integers(0, 30 + 1)),
                     "lat": lat + float(_rng.uniform(-0.15, 0.15)),
                     "lng": lng + float(_rng.uniform(-0.15, 0.15)),
-                    "soil": soils[int(_rng.integers(0, len(soils)))]
+                    "soil_type": soils[int(_rng.integers(0, len(soils)))]
                 })
         else:
             # Simulate fields across all major Indian states
@@ -194,7 +194,7 @@ def generate_bulk_advisories(fields: list = None, lat: float = None, lng: float 
                     "rainfall_mm": int(_rng.integers(0, 30 + 1)),
                     "lat": base_lat + float(_rng.uniform(-1.5, 1.5)),
                     "lng": base_lng + float(_rng.uniform(-1.5, 1.5)),
-                    "soil": soils[int(_rng.integers(0, len(soils)))]
+                    "soil_type": soils[int(_rng.integers(0, len(soils)))]
                 })
 
     PRIORITY_ORDER = {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3, "NONE": 4}

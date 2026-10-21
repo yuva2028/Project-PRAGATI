@@ -48,13 +48,59 @@ export function useLeafletMap(containerRef, options = {}) {
       maxBoundsViscosity: 0.6,
     })
 
-    // Dark-style OSM tile layer (CartoDB Dark Matter)
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
-      subdomains: 'abcd',
+    // Freely available open source map layers (Zero API key needed)
+    // 1. OpenStreetMap Standard
+    const osmStandard = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+      subdomains: 'abc',
       maxZoom: 19,
-      minZoom: 4,
-    }).addTo(mapInstance)
+      minZoom: 3,
+    })
+
+    // 2. OpenStreetMap Humanitarian (HOT)
+    const osmHot = L.tileLayer('https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png', {
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, Tiles courtesy of <a href="https://www.hotosm.org/">HOT</a>',
+      subdomains: 'abc',
+      maxZoom: 19,
+      minZoom: 3,
+    })
+
+    // 3. OpenTopoMap (Topographic open source)
+    const openTopo = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
+      attribution: 'Map data: &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, SRTM | Style: &copy; <a href="https://opentopomap.org">OpenTopoMap</a>',
+      subdomains: 'abc',
+      maxZoom: 17,
+      minZoom: 3,
+    })
+
+    // 4. Satellite Imagery (ESRI World Imagery)
+    const satellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+      attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community',
+      maxZoom: 19,
+      minZoom: 3,
+    })
+
+    // Default to OpenStreetMap Standard
+    osmStandard.addTo(mapInstance)
+
+    // Add layer switcher control for quick switching between open source maps
+    const baseLayers = {
+      "OpenStreetMap": osmStandard,
+      "OSM Humanitarian": osmHot,
+      "OpenTopoMap": openTopo,
+      "Satellite": satellite,
+    }
+    L.control.layers(baseLayers, null, { position: 'topright' }).addTo(mapInstance)
+
+    // Ensure map tiles are fully calculated & visible after layout render
+    const resizeTimer = setTimeout(() => {
+      mapInstance.invalidateSize()
+    }, 200)
+
+    const handleResize = () => {
+      mapInstance.invalidateSize()
+    }
+    window.addEventListener('resize', handleResize)
 
     // Restore view state if available
     if (mapViewState) {
@@ -77,6 +123,8 @@ export function useLeafletMap(containerRef, options = {}) {
     setMap(mapInstance)
 
     return () => {
+      clearTimeout(resizeTimer)
+      window.removeEventListener('resize', handleResize)
       mapInstance.remove()
       mapInstanceRef.current = null
       setMap(null)

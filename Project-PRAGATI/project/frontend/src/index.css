@@ -31,6 +31,37 @@
 }
 .leaflet-control-attribution a { color: #60a5fa !important; }
 
+/* Leaflet Layer Control dark theme styling */
+.leaflet-control-layers {
+  background: rgba(13, 21, 38, 0.95) !important;
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.15) !important;
+  border-radius: 8px !important;
+  color: #e2e8f0 !important;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5) !important;
+  font-family: inherit !important;
+  font-size: 12px !important;
+}
+.leaflet-control-layers-toggle {
+  background-color: rgba(15, 23, 42, 0.9) !important;
+  border-radius: 6px !important;
+}
+.leaflet-control-layers-expanded {
+  padding: 8px 12px !important;
+}
+.leaflet-control-layers-base label {
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  margin-bottom: 6px !important;
+  cursor: pointer !important;
+  color: #cbd5e1 !important;
+}
+.leaflet-control-layers-base input[type="radio"] {
+  accent-color: #22c55e !important;
+  cursor: pointer !important;
+}
+
 
 
 :root {

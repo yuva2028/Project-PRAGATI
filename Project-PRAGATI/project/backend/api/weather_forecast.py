@@ -18,7 +18,10 @@ router = APIRouter()
 def generate_fallback_forecast(lat: float = 15.3, lng: float = 75.7):
     """Generate realistic 7-day weather forecast for the pilot area."""
     import random
-    rng = random.Random(int(datetime.now().timestamp() // 3600))  # Changes hourly
+    # Seed with hour-bucket + coordinates so same location is stable per hour
+    # but different locations produce distinct forecasts
+    coord_hash = int((abs(lat) * 1000 + abs(lng) * 1000) * 100) % (2 ** 32)
+    rng = random.Random(int(datetime.now().timestamp() // 3600) ^ coord_hash)
 
     base_temp = 28 if lat > 14 else 26  # North Karnataka is warmer
     forecasts = []

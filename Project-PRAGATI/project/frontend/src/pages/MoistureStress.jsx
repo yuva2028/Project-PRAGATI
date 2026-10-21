@@ -150,7 +150,11 @@ export default function MoistureStress({ userCoords, userBbox, mapViewState, onM
   }
 
   if (error) {
-    throw new Error(error);
+    return (
+      <div className="error-card" role="alert" style={{ margin: '2rem' }}>
+        <strong>API Error:</strong> {error}
+      </div>
+    );
   }
 
   return (

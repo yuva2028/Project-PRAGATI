@@ -44,37 +44,29 @@ import asyncio
 from backend.api.cache_utils import spatial_key_builder
 
 async def warmup_cache_worker(app: FastAPI):
-    """Background task to pre-fetch and warm up the GEE cache for Karnataka."""
+    """Background task to pre-fetch and warm up the cache for Karnataka."""
     await asyncio.sleep(5)  # Wait for server to fully start
     _log.info("Starting background cache warmup for Karnataka (15.3, 75.7)")
     
     # Karnataka default coordinates
     lat, lng = 15.3, 75.7
+    base_url = "http://127.0.0.1:8000"
     
     while True:
         try:
-            if getattr(app.state, "gee_ready", False):
-                from backend.api.crop import get_crop_geojson
-                from backend.api.stress import get_stress_geojson
-                from backend.api.advisory import get_advisory
-                from starlette.requests import Request
+            import httpx
+            async with httpx.AsyncClient(timeout=120.0) as client:
+                _log.info("Warming up crop-map cache...")
+                await client.get(f"{base_url}/api/crop-map")
                 
-                # Mock a request object for the spatial_key_builder
-                class MockRequest:
-                    query_params = {"lat": lat, "lng": lng}
-                mock_req = MockRequest()
-                
-                # We simply call the underlying functions to trigger the GEE extraction 
-                # (which itself might be cached or the cache decorator catches it if we hit the endpoint)
-                # Wait, calling the function directly bypasses HTTP but triggers the @cache decorator!
                 _log.info("Warming up crop-geojson cache...")
-                await get_crop_geojson(mock_req, lat=lat, lng=lng)
+                await client.get(f"{base_url}/api/crop-geojson?lat={lat}&lng={lng}")
                 
-                _log.info("Warming up stress-geojson cache...")
-                await get_stress_geojson(mock_req, lat=lat, lng=lng)
+                _log.info("Warming up stress-map cache...")
+                await client.get(f"{base_url}/api/stress-map?lat={lat}&lng={lng}")
                 
                 _log.info("Warming up advisory cache...")
-                await get_advisory(mock_req, lat=lat, lng=lng)
+                await client.get(f"{base_url}/api/advisory?lat={lat}&lng={lng}")
                 
                 _log.info("Cache warmup complete.")
                 
@@ -82,7 +74,7 @@ async def warmup_cache_worker(app: FastAPI):
             await asyncio.sleep(12 * 3600)
         except Exception as e:
             _log.warning("Background cache warmup failed: %s", e)
-            await asyncio.sleep(3600)  # Retry in an hour
+            await asyncio.sleep(60)  # Retry in 1 minute
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -103,20 +95,22 @@ async def lifespan(app: FastAPI):
         except ValueError:
             _key_in_allowed_dir = False
 
-        if (
-            service_account and key_file
-            and key_path.exists()
-            and key_path.suffix == ".json"
-            and _key_in_allowed_dir
-        ):
-            credentials = ee.ServiceAccountCredentials(
-                email=service_account,
-                key_file=str(key_path),
-            )
-            ee.Initialize(credentials=credentials, project=GEE_PROJECT)
-        else:
-            ee.Initialize(project=GEE_PROJECT)
+        def _init_gee():
+            if (
+                service_account and key_file
+                and key_path.exists()
+                and key_path.suffix == ".json"
+                and _key_in_allowed_dir
+            ):
+                credentials = ee.ServiceAccountCredentials(
+                    email=service_account,
+                    key_file=str(key_path),
+                )
+                ee.Initialize(credentials=credentials, project=GEE_PROJECT)
+            else:
+                ee.Initialize(project=GEE_PROJECT)
 
+        await asyncio.wait_for(asyncio.to_thread(_init_gee), timeout=5.0)
         app.state.gee_ready = True
         _log.info("Google Earth Engine initialized successfully")
     except Exception as e:

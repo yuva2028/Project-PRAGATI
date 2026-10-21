@@ -243,18 +243,15 @@ export default function CropMap({ userCoords, userBbox, mapViewState, onMapChang
 
 
 
-  if (loading) return (
-    <div className="flex items-center justify-center h-full w-full">
-      <div className="animate-pulse flex flex-col items-center">
-        <div className="h-12 w-12 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin mb-4"></div>
-        <div className="text-slate-500 font-medium">Fetching Earth Engine Data...</div>
-      </div>
-    </div>
-  )
 
   if (error) {
-    throw new Error(error);
+    return (
+      <div className="error-card" role="alert" style={{ margin: '2rem' }}>
+        <strong>API Error:</strong> {error}
+      </div>
+    );
   }
+
 
   const handleFieldSelect = (id) => {
     // optional logic

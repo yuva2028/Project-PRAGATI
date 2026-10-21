@@ -47,21 +47,27 @@ INDIA_STRESS_BASELINE = {
 
 
 @router.get("/stress-map")
-@cache(expire=3600)
-async def get_stress_map(lat: float = None, lng: float = None):
+@cache(expire=3600, key_builder=spatial_key_builder)
+async def get_stress_map(request: Request, lat: float = None, lng: float = None):
     """Returns moisture stress distribution. Uses GEE VCI when available."""
     stress_dist = {}
     source = "VCI Model | NRSC India Drought Monitor Baseline"
 
     try:
-        from project.ml.moisture_model import get_stress_stats
-    except ImportError as e:
-        logger.warning("Falling back to local moisture_model import: %s", e)
         from ml.moisture_model import get_stress_stats
+    except ImportError:
+        try:
+            from project.ml.moisture_model import get_stress_stats
+        except ImportError as e:
+            logger.warning("Could not import moisture_model: %s", e)
+            get_stress_stats = None
         
     try:
         import asyncio
-        stats = await asyncio.to_thread(get_stress_stats, lat, lng)
+        if get_stress_stats is not None:
+            stats = await asyncio.to_thread(get_stress_stats, lat, lng)
+        else:
+            stats = None
     except Exception as e:
         logger.warning("Failed to fetch live stress stats from GEE (non-fatal): %s", e)
         stats = None
@@ -94,12 +100,15 @@ async def get_stress_geojson(request: Request, lat: float = None, lng: float = N
     Uses VCI computed per ground-truth point with synthetic but reproducible values.
     """
     try:
-        from project.ml.moisture_model import compute_pixel_stress
-        from project.ml.crop_classifier import get_inference_samples_from_gee
-    except ImportError as e:
-        logger.warning("Falling back to local imports: %s", e)
         from ml.moisture_model import compute_pixel_stress
         from ml.crop_classifier import get_inference_samples_from_gee
+    except ImportError:
+        try:
+            from project.ml.moisture_model import compute_pixel_stress
+            from project.ml.crop_classifier import get_inference_samples_from_gee
+        except ImportError as e:
+            logger.warning("Could not import stress/crop helpers: %s", e)
+            raise HTTPException(status_code=503, detail="ML modules unavailable")
 
     # Default coordinates if not provided
     if lat is None or lng is None:

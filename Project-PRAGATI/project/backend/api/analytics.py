@@ -14,10 +14,10 @@ import math
 logger = logging.getLogger(__name__)
 
 try:
-    from project.backend.utils.ndvi_series import generate_synthetic_ndvi_series, get_phenology_metrics
+    from backend.utils.ndvi_series import generate_synthetic_ndvi_series, get_phenology_metrics
 except ImportError as e:
     logger.warning("Falling back to backend NDVI utility import: %s", e)
-    from backend.utils.ndvi_series import generate_synthetic_ndvi_series, get_phenology_metrics
+    from project.backend.utils.ndvi_series import generate_synthetic_ndvi_series, get_phenology_metrics
 
 router = APIRouter()
 
@@ -26,10 +26,10 @@ router = APIRouter()
 async def get_ndvi_series(lat: float = None, lng: float = None):
     """Returns NDVI time series from Sentinel-2 via GEE."""
     try:
-        from project.ml.moisture_model import get_ndvi_time_series_for_stress
+        from ml.moisture_model import get_ndvi_time_series_for_stress
     except ImportError as e:
         logger.warning("Falling back to local NDVI series import: %s", e)
-        from ml.moisture_model import get_ndvi_time_series_for_stress
+        from project.ml.moisture_model import get_ndvi_time_series_for_stress
     
     try:
         import asyncio
@@ -59,10 +59,10 @@ async def get_ndvi_series(lat: float = None, lng: float = None):
 async def get_rainfall(lat: float = None, lng: float = None):
     """Returns CHIRPS rainfall stats via GEE."""
     try:
-        from project.gee.weather import get_rainfall_stats
+        from gee.weather import get_rainfall_stats
     except ImportError as e:
         logger.warning("Falling back to local rainfall import: %s", e)
-        from gee.weather import get_rainfall_stats
+        from project.gee.weather import get_rainfall_stats
         
     try:
         stats = get_rainfall_stats(months_back=6, lat=lat, lng=lng)
@@ -95,10 +95,10 @@ async def get_rainfall_series(lat: float = None, lng: float = None):
     Returns monthly CHIRPS rainfall time series for the past 6 months via GEE.
     """
     try:
-        from project.gee.weather import get_monthly_rainfall_series
+        from gee.weather import get_monthly_rainfall_series
     except ImportError as e:
         logger.warning("Falling back to local rainfall-series import: %s", e)
-        from gee.weather import get_monthly_rainfall_series
+        from project.gee.weather import get_monthly_rainfall_series
         
     try:
         series = get_monthly_rainfall_series(months_back=6, lat=lat, lng=lng)

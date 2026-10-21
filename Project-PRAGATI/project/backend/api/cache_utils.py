@@ -24,7 +24,7 @@ class SQLiteCacheBackend(Backend):
                 """
                 CREATE TABLE IF NOT EXISTS cache (
                     key TEXT PRIMARY KEY,
-                    value TEXT,
+                    value BLOB,
                     expires_at REAL
                 )
                 """
@@ -33,21 +33,30 @@ class SQLiteCacheBackend(Backend):
             conn.execute("DELETE FROM cache WHERE expires_at < ?", (time.time(),))
             conn.commit()
 
-    async def get(self, key: str) -> str | None:
+    async def get_with_ttl(self, key: str) -> tuple[int, bytes | None]:
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.execute("SELECT value, expires_at FROM cache WHERE key = ?", (key,))
             row = cursor.fetchone()
             if row:
                 value, expires_at = row
-                if expires_at > time.time():
-                    return value
+                ttl = int(expires_at - time.time())
+                if ttl > 0:
+                    if isinstance(value, str):
+                        value = value.encode("utf-8")
+                    return ttl, value
                 else:
                     conn.execute("DELETE FROM cache WHERE key = ?", (key,))
                     conn.commit()
-        return None
+        return 0, None
 
-    async def set(self, key: str, value: str, expire: int = None) -> None:
+    async def get(self, key: str) -> bytes | None:
+        _, val = await self.get_with_ttl(key)
+        return val
+
+    async def set(self, key: str, value: bytes | str, expire: int = None) -> None:
         expires_at = time.time() + (expire or 3600)
+        if isinstance(value, str):
+            value = value.encode("utf-8")
         with sqlite3.connect(self.db_path) as conn:
             conn.execute(
                 "INSERT OR REPLACE INTO cache (key, value, expires_at) VALUES (?, ?, ?)",

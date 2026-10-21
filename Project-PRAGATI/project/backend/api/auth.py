@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
@@ -12,7 +12,14 @@ import os
 
 router = APIRouter()
 
-SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key-for-pragati-hackathon")
+_DEFAULT_SECRET = "your-secret-key-for-pragati-hackathon"
+SECRET_KEY = os.getenv("SECRET_KEY", _DEFAULT_SECRET)
+if SECRET_KEY == _DEFAULT_SECRET:
+    import logging as _logging
+    _logging.getLogger(__name__).warning(
+        "SECRET_KEY is not set — using insecure default. "
+        "Set SECRET_KEY in .env before deploying to production!"
+    )
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24
 
@@ -54,9 +61,9 @@ def get_user(db: Session, username: str):
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     to_encode = data.copy()
     if expires_delta:
-        expire = datetime.utcnow() + expires_delta
+        expire = datetime.now(timezone.utc) + expires_delta
     else:
-        expire = datetime.utcnow() + timedelta(minutes=15)
+        expire = datetime.now(timezone.utc) + timedelta(minutes=15)
     to_encode.update({"exp": expire})
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
